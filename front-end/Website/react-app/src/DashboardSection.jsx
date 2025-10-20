@@ -361,15 +361,15 @@ const DashboardSection = () => {
           <CircularProgress size={24} sx={{ color: '#272343' }} />
           <div className="text-center md:text-left">
             <p className="text-[#272343] font-bold text-base md:text-lg">
-              Loading recommendations...
+              AI is analyzing jobs for you...
             </p>
             <p className="text-[#272343]/70 text-xs md:text-sm">
-              Please wait a moment
+              Finding the best matches based on your profile
             </p>
           </div>
         </div>
       )}
-        {/* Job recommendations cards */}
+      {/* Job recommendations cards */}
       {jobsLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[1, 2, 3, 4].map((i) => (
