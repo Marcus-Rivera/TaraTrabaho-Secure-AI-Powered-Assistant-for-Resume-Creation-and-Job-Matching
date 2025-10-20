@@ -161,44 +161,40 @@ const SignupPage = () => {
 
   const handleSignup = async (e) => {
     e.preventDefault();
-    
+
     if (validateForm()) {
       try {
-        const payload = {
-          ...form,
-          name: `${form.firstname.trim()} ${form.lastname.trim()}`,
-        };
-
         const response = await fetch("http://localhost:5000/api/signup", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+          body: JSON.stringify(form),
         });
 
         const result = await response.json();
 
-        if (result.status === "success") {
+        if (result.status === "pending") {
           setAlertType("success");
-          setAlertMsg("User registered successfully!");
+          setAlertMsg("Signup successful! Please verify your email.");
           setShowAlert(true);
-          setTimeout(() => navigate("/login"), 2000);
+
+          // Redirect to OTP page with email
+          setTimeout(() => {
+            navigate("/otp", { state: { email: result.email } });
+          }, 1500);
         } else {
           setAlertType("error");
-          setAlertMsg(result.message || "Registration failed");
+          setAlertMsg(result.message);
           setShowAlert(true);
         }
       } catch (error) {
+        console.error(error);
         setAlertType("error");
         setAlertMsg("Error connecting to server");
         setShowAlert(true);
       }
-    } else {
-      setAlertType("error");
-      setAlertMsg("Please fill out all required fields properly");
-      setShowAlert(true);
-      setTimeout(() => setShowAlert(false), 3000);
     }
   };
+
 
   const getInputClassName = (fieldName, baseClass) => {
     const hasError = touched[fieldName] && errors[fieldName];

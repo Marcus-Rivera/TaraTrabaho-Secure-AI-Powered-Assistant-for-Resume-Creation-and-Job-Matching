@@ -5,6 +5,8 @@ const cors = require("cors");
 const bodyParser = require("body-parser");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const nodemailer = require("nodemailer");
+const crypto = require("crypto");
 const SECRET_KEY = "your-secret-key"; // Use .env for real projects
 
 // Test for Resume Saver
@@ -24,6 +26,124 @@ app.use(bodyParser.json());
 
 // Connect to SQLite database
 const db = new sqlite3.Database("tratrabaho.db");
+
+// Temporary in-memory OTP store
+const otpStore = {};
+
+// Configure Nodemailer transporter (use real credentials)
+const transporter = nodemailer.createTransport({
+  service: "gmail", // or "Outlook", "Yahoo", etc.
+  auth: {
+    user: "kayle1410@gmail.com",
+    pass: "ipcb decf eall jkxe", // NOT your Gmail password
+  },
+});
+
+// ============================================================================
+// SEND OTP
+// ============================================================================
+app.post("/api/send-otp", async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ message: "Email is required" });
+  }
+
+  // Generate 4-digit OTP
+  const otp = crypto.randomInt(1000, 9999).toString();
+
+  // Save OTP in memory with 5-min expiry
+  otpStore[email] = { otp, expires: Date.now() + 5 * 60 * 1000 };
+
+  // Send email
+  try {
+    await transporter.sendMail({
+      from: '"TraTrabaho" <your_email@gmail.com>',
+      to: email,
+      subject: "Your OTP Code",
+      text: `Your OTP code is ${otp}. It will expire in 5 minutes.`,
+    });
+
+    res.json({ success: true, message: "OTP sent successfully!" });
+  } catch (err) {
+    console.error("Email error:", err);
+    res.status(500).json({ success: false, message: "Failed to send OTP" });
+  }
+});
+
+// ============================================================================
+// VERIFY OTP
+// ============================================================================
+app.post("/api/verify-otp", (req, res) => {
+  const { email, otp } = req.body;
+
+  if (!email || !otp) {
+    return res.status(400).json({ message: "Email and OTP are required" });
+  }
+
+  const record = otpStore[email];
+  if (!record) return res.status(400).json({ success: false, message: "No OTP sent for this email" });
+  if (Date.now() > record.expires) {
+    delete otpStore[email];
+    return res.status(400).json({ success: false, message: "OTP expired" });
+  }
+  if (record.otp !== otp) return res.status(400).json({ success: false, message: "Invalid OTP" });
+
+  // ✅ Mark user as verified
+  db.run("UPDATE user SET verified = 1 WHERE email = ?", [email], function (err) {
+    if (err) {
+      console.error("DB Error:", err);
+      return res.status(500).json({ success: false, message: "Database error" });
+    }
+
+    delete otpStore[email];
+    res.json({ success: true, message: "Account verified successfully!" });
+  });
+});
+
+// ============================================================================
+// AUTO-LOGIN AFTER OTP VERIFICATION
+// ============================================================================
+app.post("/api/auto-login", (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ success: false, message: "Email is required" });
+  }
+
+  // Retrieve user from database
+  const query = `SELECT * FROM user WHERE email = ? AND verified = 1`;
+  db.get(query, [email], (err, user) => {
+    if (err) {
+      console.error("DB Error:", err);
+      return res.status(500).json({ success: false, message: "Database error" });
+    }
+
+    if (!user) {
+      return res.status(401).json({ success: false, message: "User not found or not verified" });
+    }
+
+    // Create JWT token
+    const token = jwt.sign(
+      { id: user.user_id, email: user.email, role: user.role }, 
+      SECRET_KEY, 
+      { expiresIn: "1h" }
+    );
+
+    res.json({
+      success: true,
+      message: "Auto-login successful",
+      token,
+      user: {
+        id: user.user_id,
+        email: user.email,
+        firstname: user.firstname,
+        lastname: user.lastname,
+        role: user.role,
+      },
+    });
+  });
+});
 
 // ============================================================================
 // GEMINI API ENDPOINT
@@ -143,7 +263,6 @@ app.post("/api/verifyToken", (req, res) => {
 app.post("/api/signup", async (req, res) => {
   const { firstname, lastname, birthday, gender, username, email, phone, password } = req.body;
 
-  // Validate required fields
   if (!email || !password) {
     return res.status(400).json({ status: "error", message: "Email and password are required" });
   }
@@ -151,16 +270,14 @@ app.post("/api/signup", async (req, res) => {
   const role = "job_seeker";
 
   try {
-    // Hash password securely
     const password_hash = await bcrypt.hash(password, 10);
 
-    // Prepare SQL statement
+    // Insert new user with verified = 0 (unverified)
     const stmt = db.prepare(`
-      INSERT INTO user (firstname, lastname, birthday, gender, username, email, phone, password_hash, role)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO user (firstname, lastname, birthday, gender, username, email, phone, password_hash, role, verified)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
     `);
 
-    // Execute the statement
     stmt.run(
       firstname,
       lastname,
@@ -171,9 +288,8 @@ app.post("/api/signup", async (req, res) => {
       phone,
       password_hash,
       role,
-      function (err) {
+      async function (err) {
         if (err) {
-          // Handle duplicate email or other DB errors
           if (err.message.includes("UNIQUE constraint")) {
             return res.status(400).json({ status: "error", message: "Email already exists" });
           }
@@ -181,12 +297,31 @@ app.post("/api/signup", async (req, res) => {
           return res.status(500).json({ status: "error", message: "Database error" });
         }
 
-        // Success response
-        res.json({
-          status: "success",
-          message: "User registered successfully",
-          userId: this.lastID,
-        });
+        // Generate OTP (4-digit)
+        const otp = crypto.randomInt(1000, 9999).toString();
+        otpStore[email] = { otp, expires: Date.now() + 5 * 60 * 1000 };
+
+        // Send OTP via email
+        try {
+          await transporter.sendMail({
+            from: '"TaraTrabaho" <kayle1410@gmail.com>',
+            to: email,
+            subject: "Your TaraTrabaho OTP Code",
+            text: `Your OTP code is ${otp}. It will expire in 5 minutes.`,
+          });
+
+          res.json({
+            status: "pending",
+            message: "Signup successful! Please verify your email via OTP.",
+            email,
+          });
+        } catch (mailErr) {
+          console.error("Error sending OTP email:", mailErr);
+          res.status(500).json({
+            status: "error",
+            message: "User created but failed to send OTP email.",
+          });
+        }
       }
     );
 
@@ -196,6 +331,7 @@ app.post("/api/signup", async (req, res) => {
     res.status(500).json({ status: "error", message: "Server error" });
   }
 });
+
 
 // ============================================================================
 // FETCH ALL USERS
