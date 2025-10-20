@@ -240,7 +240,6 @@ app.get("/api/jobs", (req, res) => {
   const query = `
     SELECT job_id, title, description, location, min_salary, max_salary, 
            vacantleft, company, company_email, type, posted, tags, remote 
-           vacantleft, company, company_email, type, posted, tags, remote 
     FROM job
   `;
   
@@ -266,7 +265,6 @@ app.post("/api/jobs", (req, res) => {
     vacantleft, 
     company, 
     company_email,
-    company_email,
     type, 
     tags, 
     remote 
@@ -274,15 +272,12 @@ app.post("/api/jobs", (req, res) => {
 
   // Validate required fields
   if (!title || !description || !location || !min_salary || !max_salary || !vacantleft || !company || !company_email || !type || !tags) {
-  if (!title || !description || !location || !min_salary || !max_salary || !vacantleft || !company || !company_email || !type || !tags) {
     return res.status(400).json({ message: "All fields are required." });
   }
 
   const posted = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
 
   const query = `
-    INSERT INTO job (title, description, location, min_salary, max_salary, vacantleft, company, company_email, type, posted, tags, remote)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     INSERT INTO job (title, description, location, min_salary, max_salary, vacantleft, company, company_email, type, posted, tags, remote)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
@@ -295,7 +290,6 @@ app.post("/api/jobs", (req, res) => {
     max_salary, 
     vacantleft, 
     company, 
-    company_email,
     company_email,
     type, 
     posted, 
@@ -321,7 +315,6 @@ app.post("/api/jobs", (req, res) => {
       vacantleft,
       company,
       company_email,
-      company_email,
       type,
       posted,
       tags,
@@ -344,7 +337,6 @@ app.put("/api/jobs/:job_id", (req, res) => {
     vacantleft, 
     company, 
     company_email,
-    company_email,
     type, 
     posted, 
     tags, 
@@ -360,7 +352,6 @@ app.put("/api/jobs/:job_id", (req, res) => {
     UPDATE job 
     SET title = ?, description = ?, location = ?, min_salary = ?, max_salary = ?, 
         vacantleft = ?, company = ?, company_email = ?, type = ?, posted = ?, tags = ?, remote = ?
-        vacantleft = ?, company = ?, company_email = ?, type = ?, posted = ?, tags = ?, remote = ?
     WHERE job_id = ?
   `;
 
@@ -372,7 +363,6 @@ app.put("/api/jobs/:job_id", (req, res) => {
     max_salary, 
     vacantleft, 
     company, 
-    company_email,
     company_email,
     type, 
     posted, 
@@ -719,7 +709,6 @@ app.get('/api/chat/history/:userId', (req, res) => {
       FROM chathistory 
       WHERE user_id = ? 
       ORDER BY timestamp DESC 
-      ORDER BY timestamp DESC 
       LIMIT 50  -- Optional: limit to 50 most recent chats for performance
     `;
 
@@ -801,20 +790,35 @@ app.post('/api/jobs/recommend', async (req, res) => {
         return res.status(500).json({ error: 'Failed to fetch resume' });
       }
 
+      // Return empty if no resume found - SKIP AI processing
+      if (!resumeRow || !resumeRow.resume_data) {
+        console.log('No resume found for user:', userId);
+        return res.json({
+          success: true,
+          recommendations: [],
+          hasResume: false,
+        });
+      }
+
+      // Parse resume data
       let userProfile = {};
-      if (resumeRow && resumeRow.resume_data) {
-        try {
-          const resumeData = JSON.parse(resumeRow.resume_data);
-          userProfile = {
-            skills: resumeData.skills || [],
-            experience: resumeData.experience || [],
-            education: resumeData.education || [],
-            objective: resumeData.objective || '',
-            summary: resumeData.summary || '',
-          };
-        } catch (e) {
-          console.error('Error parsing resume data:', e);
-        }
+      try {
+        const resumeData = JSON.parse(resumeRow.resume_data);
+        userProfile = {
+          skills: resumeData.skills || [],
+          experience: resumeData.experience || [],
+          education: resumeData.education || [],
+          objective: resumeData.objective || '',
+          summary: resumeData.summary || '',
+        };
+        console.log('✅ Resume found for user:', userId, '- Starting AI matching...');
+      } catch (e) {
+        console.error('Error parsing resume data:', e);
+        return res.json({
+          success: true,
+          recommendations: [],
+          hasResume: false,
+        });
       }
 
       // 2. Fetch all jobs
@@ -837,32 +841,32 @@ app.post('/api/jobs/recommend', async (req, res) => {
         // 3. Use Gemini AI to match jobs with user profile
         const prompt = `You are an AI job matching expert. Analyze the user's profile and recommend the TOP 5 most suitable jobs from the list below. 
 
-User Profile:
-- Skills: ${userProfile.skills.join(', ') || 'Not specified'}
-- Experience: ${JSON.stringify(userProfile.experience) || 'Not specified'}
-- Education: ${JSON.stringify(userProfile.education) || 'Not specified'}
-- Career Objective: ${userProfile.objective || 'Not specified'}
-- Summary: ${userProfile.summary || 'Not specified'}
+        User Profile:
+        - Skills: ${userProfile.skills.join(', ') || 'Not specified'}
+        - Experience: ${JSON.stringify(userProfile.experience) || 'Not specified'}
+        - Education: ${JSON.stringify(userProfile.education) || 'Not specified'}
+        - Career Objective: ${userProfile.objective || 'Not specified'}
+        - Summary: ${userProfile.summary || 'Not specified'}
 
-Available Jobs (${jobs.length} total):
-${jobs.map((job, idx) => `
-${idx + 1}. Job ID: ${job.job_id}
-   Title: ${job.title}
-   Company: ${job.company}
-   Type: ${job.type}
-   Location: ${job.location}
-   Tags: ${job.tags}
-   Description: ${job.description}
-`).join('\n')}
+        Available Jobs (${jobs.length} total):
+        ${jobs.map((job, idx) => `
+        ${idx + 1}. Job ID: ${job.job_id}
+          Title: ${job.title}
+          Company: ${job.company}
+          Type: ${job.type}
+          Location: ${job.location}
+          Tags: ${job.tags}
+          Description: ${job.description}
+        `).join('\n')}
 
-IMPORTANT: 
-- Return ONLY a JSON array of exactly 5 job IDs (numbers only) in order of best match
-- Format: [job_id1, job_id2, job_id3, job_id4, job_id5]
-- If fewer than 5 jobs exist, return all available job IDs
-- Consider skills match, experience level, education requirements, and career goals
-- Prioritize jobs that align with the user's skills and career objective
+        IMPORTANT: 
+        - Return ONLY a JSON array of exactly 5 job IDs (numbers only) in order of best match
+        - Format: [job_id1, job_id2, job_id3, job_id4, job_id5]
+        - If fewer than 5 jobs exist, return all available job IDs
+        - Consider skills match, experience level, education requirements, and career goals
+        - Prioritize jobs that align with the user's skills and career objective
 
-Return ONLY the JSON array, no explanation.`;
+        Return ONLY the JSON array, no explanation.`;
 
         try {
           // Call Gemini API
@@ -967,30 +971,29 @@ app.get('/api/stats/:userId', (req, res) => {
   try {
     const { userId } = req.params;
 
-    // Get resume count
-    const resumeQuery = 'SELECT COUNT(*) as count FROM resume WHERE user_id = ?';
+    // Get application count
+    const applicationQuery = 'SELECT COUNT(*) as count FROM application WHERE user_id = ?';
     
-    // Get chat history count (resumes created in chatbot)
-    const chatQuery = 'SELECT COUNT(*) as count FROM chathistory WHERE user_id = ? AND resume_data IS NOT NULL';
+    // Get resume count from resume table ONLY
+    const resumeQuery = 'SELECT COUNT(*) as count FROM resume WHERE user_id = ?';
 
-    db.get(resumeQuery, [userId], (err, resumeResult) => {
+    db.get(applicationQuery, [userId], (err, appResult) => {
       if (err) {
-        console.error('Error fetching resume count:', err);
+        console.error('Error fetching application count:', err);
         return res.status(500).json({ error: 'Failed to fetch stats' });
       }
 
-      db.get(chatQuery, [userId], (err, chatResult) => {
+      db.get(resumeQuery, [userId], (err, resumeResult) => {
         if (err) {
-          console.error('Error fetching chat count:', err);
+          console.error('Error fetching resume count:', err);
           return res.status(500).json({ error: 'Failed to fetch stats' });
         }
 
-        // For now, applications is 0 (you can add an applications table later)
         res.json({
           success: true,
           stats: {
-            applications: 0, // TODO: Implement applications table
-            resumes: (resumeResult?.count || 0) + (chatResult?.count || 0),
+            applications: appResult?.count || 0,
+            resumes: resumeResult?.count || 0,
             matches: 0, // Will be calculated from recommendations
           }
         });
@@ -1005,10 +1008,30 @@ app.get('/api/stats/:userId', (req, res) => {
 // ============================================================================
 // JOB APPLICATION - EMAIL TO COMPANY
 // ============================================================================
+// Add this to your server.js file
+// Make sure to install nodemailer: npm install nodemailer
+
+const nodemailer = require('nodemailer');
+
+// Email Configuration (add this near the top of server.js)
+const EMAIL_CONFIG = {
+  service: 'gmail', // or 'outlook', 'yahoo', etc.
+  auth: {
+    user: 'wantedspexz@gmail.com', // Your email
+    pass: 'xrsn bbgm mvnn xbjc' 
+  }
+};
+
+const transporter = nodemailer.createTransport(EMAIL_CONFIG);
+
+// ============================================================================
+// JOB APPLICATION ENDPOINT - Complete Version
+// ============================================================================
 app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
   try {
-    const { userId, jobId, fullName, email, phone, coverLetter, resumeSource } = req.body;
+    const { userId, jobId, fullName, email, phone, coverLetter, resumeSource, resumeId } = req.body;
     
+    // Validate required fields
     if (!userId || !jobId || !fullName || !email || !phone) {
       return res.status(400).json({ 
         success: false, 
@@ -1042,12 +1065,11 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
 
     let resumeData, resumeFilename;
 
-    // Handle resume
+    // Handle resume based on source
     if (resumeSource === 'upload' && req.file) {
       resumeData = req.file.buffer;
       resumeFilename = req.file.originalname;
-    } else if (resumeSource === 'saved') {
-      const resumeId = req.body.resumeId;
+    } else if (resumeSource === 'saved' && resumeId) {
       const resumeQuery = 'SELECT filename, file_data FROM resume WHERE resume_id = ?';
       
       const savedResume = await new Promise((resolve, reject) => {
@@ -1073,11 +1095,11 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
       });
     }
 
-    // Save to database
+    // Save application to database
     const query = `
       INSERT INTO application 
-        (user_id, job_id, full_name, email, phone, cover_letter, resume_filename, resume_data, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+        (user_id, job_id, full_name, email, phone, cover_letter, resume_filename, resume_data, status, applied_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now'))
     `;
 
     const applicationId = await new Promise((resolve, reject) => {
@@ -1094,72 +1116,33 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
     // 📧 SEND EMAIL TO COMPANY
     const companyMailOptions = {
       from: EMAIL_CONFIG.auth.user,
-      to: job.company_email, // 👈 Email goes to company
-      replyTo: email, // 👈 Company can reply directly to applicant
+      to: job.company_email,
+      replyTo: email, // Company can reply directly to applicant
       subject: `New Job Application: ${job.title} - ${fullName}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <div style="background: linear-gradient(135deg, #BAE8E8, #FBDA23); padding: 20px; border-radius: 10px 10px 0 0;">
-            <h2 style="color: #272343; margin: 0;">📋 New Job Application via TaraTrabaho</h2>
+            <h2 style="color: #272343; margin: 0;">📋 New Job Application</h2>
           </div>
           
-          <div style="background: white; padding: 20px; border: 1px solid #ddd; border-radius: 0 0 10px 10px;">
-            <h3 style="color: #272343; border-bottom: 2px solid #FBDA23; padding-bottom: 10px;">
-              ${job.title}
-            </h3>
+          <div style="background: white; padding: 20px; border: 1px solid #ddd;">
+            <h3 style="color: #272343;">${job.title}</h3>
             
-            <p style="color: #666; margin-bottom: 20px;">
-              <strong>Position:</strong> ${job.title}<br>
-              <strong>Location:</strong> ${job.location}<br>
-              <strong>Job Type:</strong> ${job.type}<br>
-              <strong>Application Date:</strong> ${new Date().toLocaleDateString('en-US', { 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-              })}
-            </p>
-            
-            <hr style="border: 1px solid #eee; margin: 20px 0;">
-            
-            <h4 style="color: #272343;">👤 Applicant Information</h4>
-            <div style="background: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
-              <p style="margin: 5px 0;"><strong>Full Name:</strong> ${fullName}</p>
-              <p style="margin: 5px 0;"><strong>Email:</strong> <a href="mailto:${email}" style="color: #2196F3;">${email}</a></p>
-              <p style="margin: 5px 0;"><strong>Phone:</strong> <a href="tel:${phone}" style="color: #2196F3;">${phone}</a></p>
-              <p style="margin: 5px 0;"><strong>Application ID:</strong> #${applicationId}</p>
-            </div>
+            <p><strong>Applicant:</strong> ${fullName}</p>
+            <p><strong>Email:</strong> ${email}</p>
+            <p><strong>Phone:</strong> ${phone}</p>
+            <p><strong>Application ID:</strong> #${applicationId}</p>
             
             ${coverLetter ? `
-              <h4 style="color: #272343;">📝 Cover Letter</h4>
-              <div style="background: #f0f9ff; padding: 15px; border-left: 4px solid #FBDA23; border-radius: 5px; margin-bottom: 20px;">
-                <p style="white-space: pre-line; line-height: 1.6;">${coverLetter}</p>
-              </div>
+              <h4>Cover Letter:</h4>
+              <p style="white-space: pre-line; background: #f9f9f9; padding: 15px; border-radius: 5px;">
+                ${coverLetter}
+              </p>
             ` : ''}
             
-            <div style="background: #BAE8E8; padding: 15px; border-radius: 5px; text-align: center; margin: 20px 0;">
-              <p style="margin: 0;">📎 <strong>Resume Attached:</strong> ${resumeFilename}</p>
-            </div>
-            
-            <hr style="border: 1px solid #eee; margin: 20px 0;">
-            
-            <h4 style="color: #272343;">Next Steps</h4>
-            <ol style="line-height: 1.8;">
-              <li>Review the attached resume and cover letter</li>
-              <li>Contact the applicant directly using the email/phone above</li>
-              <li>Schedule an interview if the candidate is a good fit</li>
-            </ol>
-            
-            <div style="background: #fff9e6; padding: 15px; border-left: 4px solid #FBDA23; border-radius: 5px; margin-top: 20px;">
-              <p style="margin: 0; font-size: 14px;">
-                <strong>💡 Tip:</strong> Reply directly to this email to contact ${fullName}. 
-                Their email (${email}) is set as the reply-to address.
-              </p>
-            </div>
-          </div>
-          
-          <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
-            <p><strong>TaraTrabaho</strong> - Connecting Talent with Opportunities</p>
-            <p>This application was submitted through TaraTrabaho Job Portal</p>
+            <p style="margin-top: 20px; color: #666;">
+              📎 Resume is attached to this email.
+            </p>
           </div>
         </div>
       `,
@@ -1171,7 +1154,6 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
       ]
     };
 
-    // Send email to company
     await transporter.sendMail(companyMailOptions);
 
     // 📧 SEND CONFIRMATION EMAIL TO APPLICANT
@@ -1182,80 +1164,30 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <div style="background: linear-gradient(135deg, #BAE8E8, #FBDA23); padding: 20px; border-radius: 10px 10px 0 0;">
-            <h2 style="color: #272343; margin: 0;">✅ Application Submitted Successfully!</h2>
+            <h2 style="color: #272343; margin: 0;">✅ Application Submitted!</h2>
           </div>
           
-          <div style="background: white; padding: 20px; border: 1px solid #ddd; border-radius: 0 0 10px 10px;">
+          <div style="background: white; padding: 20px; border: 1px solid #ddd;">
             <p>Hi <strong>${fullName}</strong>,</p>
             
-            <p>Your application has been successfully submitted and sent directly to <strong>${job.company}</strong>!</p>
+            <p>Your application has been successfully submitted to <strong>${job.company}</strong>!</p>
             
-            <div style="background: #f0f9ff; padding: 20px; border-left: 4px solid #FBDA23; border-radius: 5px; margin: 20px 0;">
-              <h4 style="color: #272343; margin-top: 0;">📋 Application Details</h4>
-              <table style="width: 100%; border-collapse: collapse;">
-                <tr>
-                  <td style="padding: 8px 0; color: #666;"><strong>Position:</strong></td>
-                  <td style="padding: 8px 0;">${job.title}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 8px 0; color: #666;"><strong>Company:</strong></td>
-                  <td style="padding: 8px 0;">${job.company}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 8px 0; color: #666;"><strong>Location:</strong></td>
-                  <td style="padding: 8px 0;">${job.location}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 8px 0; color: #666;"><strong>Job Type:</strong></td>
-                  <td style="padding: 8px 0;">${job.type}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 8px 0; color: #666;"><strong>Application ID:</strong></td>
-                  <td style="padding: 8px 0;">#${applicationId}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 8px 0; color: #666;"><strong>Submitted:</strong></td>
-                  <td style="padding: 8px 0;">${new Date().toLocaleString('en-US')}</td>
-                </tr>
-              </table>
+            <div style="background: #f0f9ff; padding: 15px; border-left: 4px solid #FBDA23; margin: 20px 0;">
+              <h4 style="margin-top: 0;">Application Details</h4>
+              <p><strong>Position:</strong> ${job.title}</p>
+              <p><strong>Company:</strong> ${job.company}</p>
+              <p><strong>Location:</strong> ${job.location}</p>
+              <p><strong>Application ID:</strong> #${applicationId}</p>
             </div>
             
-            <h4 style="color: #272343;">📌 What Happens Next?</h4>
-            <ol style="line-height: 1.8; padding-left: 20px;">
-              <li><strong>${job.company}</strong> will review your application</li>
-              <li>If shortlisted, they will contact you directly via:
-                <ul style="margin-top: 5px;">
-                  <li>Email: <strong>${email}</strong></li>
-                  <li>Phone: <strong>${phone}</strong></li>
-                </ul>
-              </li>
-              <li>Response time varies by company (typically 1-2 weeks)</li>
+            <h4>What's Next?</h4>
+            <ol>
+              <li>${job.company} will review your application</li>
+              <li>If shortlisted, they will contact you at ${email} or ${phone}</li>
+              <li>Response time varies (typically 1-2 weeks)</li>
             </ol>
             
-            <div style="background: #fff9e6; padding: 15px; border-left: 4px solid #FBDA23; border-radius: 5px; margin: 20px 0;">
-              <p style="margin: 0; font-size: 14px;">
-                <strong>💡 Pro Tip:</strong> Check your email regularly and ensure your phone is reachable. 
-                Companies may reach out at any time!
-              </p>
-            </div>
-            
-            <div style="text-align: center; margin-top: 30px;">
-              <a href="http://localhost:3000/taratrabaho/dashboard" 
-                 style="background: #FBDA23; color: #272343; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">
-                View My Applications
-              </a>
-            </div>
-            
-            <hr style="border: 1px solid #eee; margin: 30px 0;">
-            
-            <p style="color: #666; font-size: 13px; text-align: center; margin: 0;">
-              Keep this email for your records. Good luck with your application! 🍀
-            </p>
-          </div>
-          
-          <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
-            <p><strong>TaraTrabaho</strong> - Find Your Dream Job Today!</p>
-            <p>Questions? Contact us at support@taratrabaho.com</p>
+            <p style="color: #666; margin-top: 20px;">Good luck! 🍀</p>
           </div>
         </div>
       `
@@ -1263,31 +1195,17 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
 
     await transporter.sendMail(applicantMailOptions);
 
-    // 📧 BCC TO ADMIN (Optional - for tracking)
-    const adminNotification = {
-      from: EMAIL_CONFIG.auth.user,
-      to: 'admin@taratrabaho.com',
-      subject: `[TRACKING] Application: ${fullName} → ${job.company}`,
-      html: `
-        <p><strong>New Application Submitted via TaraTrabaho</strong></p>
-        <ul>
-          <li>Applicant: ${fullName}</li>
-          <li>Position: ${job.title}</li>
-          <li>Company: ${job.company}</li>
-          <li>Company Email: ${job.company_email}</li>
-          <li>Application ID: #${applicationId}</li>
-          <li>Timestamp: ${new Date().toLocaleString()}</li>
-        </ul>
-      `
-    };
-
-    // Send admin notification (non-blocking)
-    transporter.sendMail(adminNotification).catch(err => 
-      console.log('Admin notification failed:', err)
-    );
-
-    // Update job vacancy
-    db.run('UPDATE job SET vacantleft = vacantleft - 1 WHERE job_id = ? AND vacantleft > 0', [jobId]);
+    // Update job vacancy count
+    await new Promise((resolve, reject) => {
+      db.run(
+        'UPDATE job SET vacantleft = vacantleft - 1 WHERE job_id = ? AND vacantleft > 0', 
+        [jobId],
+        (err) => {
+          if (err) reject(err);
+          else resolve();
+        }
+      );
+    });
 
     res.json({
       success: true,
@@ -1302,6 +1220,141 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
       error: 'Failed to submit application. Please try again.' 
     });
   }
+});
+
+// ============================================================================
+// GET USER'S APPLICATIONS
+// ============================================================================
+app.get('/api/applications/user/:userId', (req, res) => {
+  const { userId } = req.params;
+  
+  const query = `
+    SELECT 
+      a.application_id,
+      a.full_name,
+      a.email,
+      a.phone,
+      a.cover_letter,
+      a.resume_filename,
+      a.status,
+      a.applied_at,
+      j.title as job_title,
+      j.company,
+      j.location,
+      j.type
+    FROM application a
+    JOIN job j ON a.job_id = j.job_id
+    WHERE a.user_id = ?
+    ORDER BY a.applied_at DESC
+  `;
+  
+  db.all(query, [userId], (err, rows) => {
+    if (err) {
+      console.error('Error fetching applications:', err);
+      return res.status(500).json({ error: 'Failed to fetch applications' });
+    }
+    
+    res.json({ success: true, applications: rows });
+  });
+});
+
+// ============================================================================
+// DOWNLOAD APPLICATION RESUME
+// ============================================================================
+app.get('/api/applications/resume/:applicationId', (req, res) => {
+  const { applicationId } = req.params;
+  
+  const query = 'SELECT resume_filename, resume_data FROM application WHERE application_id = ?';
+  
+  db.get(query, [applicationId], (err, row) => {
+    if (err) {
+      console.error('Error fetching resume:', err);
+      return res.status(500).json({ error: 'Failed to fetch resume' });
+    }
+    
+    if (!row) {
+      return res.status(404).json({ error: 'Resume not found' });
+    }
+    
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${row.resume_filename}"`);
+    res.send(row.resume_data);
+  });
+});
+
+// ============================================================================
+// SAVED JOBS ENDPOINTS
+// ============================================================================
+
+// GET user's saved jobs
+app.get('/api/saved-jobs/:userId', (req, res) => {
+  const { userId } = req.params;
+  
+  const query = `
+    SELECT s.saved_job_id, s.job_id, s.saved_at
+    FROM saved_jobs s
+    WHERE s.user_id = ?
+    ORDER BY s.saved_at DESC
+  `;
+  
+  db.all(query, [userId], (err, rows) => {
+    if (err) {
+      console.error('Error fetching saved jobs:', err);
+      return res.status(500).json({ error: 'Failed to fetch saved jobs' });
+    }
+    
+    res.json({ success: true, savedJobs: rows });
+  });
+});
+
+// SAVE a job
+app.post('/api/saved-jobs', (req, res) => {
+  const { userId, jobId } = req.body;
+  
+  if (!userId || !jobId) {
+    return res.status(400).json({ error: 'userId and jobId are required' });
+  }
+  
+  const query = `
+    INSERT INTO saved_jobs (user_id, job_id)
+    VALUES (?, ?)
+  `;
+  
+  db.run(query, [userId, jobId], function(err) {
+    if (err) {
+      if (err.message.includes('UNIQUE constraint')) {
+        return res.status(400).json({ error: 'Job already saved' });
+      }
+      console.error('Error saving job:', err);
+      return res.status(500).json({ error: 'Failed to save job' });
+    }
+    
+    res.json({ 
+      success: true, 
+      message: 'Job saved successfully',
+      savedJobId: this.lastID
+    });
+  });
+});
+
+// UNSAVE a job
+app.delete('/api/saved-jobs/:userId/:jobId', (req, res) => {
+  const { userId, jobId } = req.params;
+  
+  const query = 'DELETE FROM saved_jobs WHERE user_id = ? AND job_id = ?';
+  
+  db.run(query, [userId, jobId], function(err) {
+    if (err) {
+      console.error('Error unsaving job:', err);
+      return res.status(500).json({ error: 'Failed to unsave job' });
+    }
+    
+    if (this.changes === 0) {
+      return res.status(404).json({ error: 'Saved job not found' });
+    }
+    
+    res.json({ success: true, message: 'Job unsaved successfully' });
+  });
 });
 
 
