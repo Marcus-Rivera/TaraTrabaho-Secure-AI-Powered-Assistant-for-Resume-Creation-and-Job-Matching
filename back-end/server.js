@@ -27,6 +27,7 @@ app.use(bodyParser.json());
 
 // Connect to SQLite database
 const db = new sqlite3.Database("tratrabaho.db");
+const tempUserStore = {};
 
 // ============================================================================
 // GEMINI API ENDPOINT
@@ -177,24 +178,70 @@ app.post("/api/verify-otp", (req, res) => {
     return res.status(400).json({ message: "Email and OTP are required" });
   }
 
-  const record = otpStore[email];
-  if (!record) return res.status(400).json({ success: false, message: "No OTP sent for this email" });
-  if (Date.now() > record.expires) {
+  // Check OTP
+  const otpRecord = otpStore[email];
+  if (!otpRecord) return res.status(400).json({ success: false, message: "No OTP sent for this email" });
+  
+  if (Date.now() > otpRecord.expires) {
     delete otpStore[email];
     return res.status(400).json({ success: false, message: "OTP expired" });
   }
-  if (record.otp !== otp) return res.status(400).json({ success: false, message: "Invalid OTP" });
+  
+  if (otpRecord.otp !== otp) return res.status(400).json({ success: false, message: "Invalid OTP" });
 
-  // ✅ Mark user as verified
-  db.run("UPDATE user SET verified = 1 WHERE email = ?", [email], function (err) {
-    if (err) {
-      console.error("DB Error:", err);
-      return res.status(500).json({ success: false, message: "Database error" });
+  // Check if temporary user data exists
+  const tempUser = tempUserStore[email];
+  if (!tempUser) {
+    return res.status(400).json({ success: false, message: "Signup session expired. Please sign up again." });
+  }
+
+  // Check if temporary data expired
+  if (Date.now() > tempUser.expires) {
+    delete tempUserStore[email];
+    return res.status(400).json({ success: false, message: "Signup session expired. Please sign up again." });
+  }
+
+  // ✅ Insert user into database after successful OTP verification
+  const stmt = db.prepare(`
+    INSERT INTO user (firstname, lastname, birthday, gender, username, email, phone, password_hash, role, verified)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+  `);
+
+  stmt.run(
+    tempUser.firstname,
+    tempUser.lastname,
+    tempUser.birthday,
+    tempUser.gender,
+    tempUser.username,
+    tempUser.email,
+    tempUser.phone,
+    tempUser.password_hash,
+    tempUser.role,
+    function (err) {
+      if (err) {
+        console.error("DB Insert Error:", err);
+        
+        // Handle unique constraint violation (in case of race condition)
+        if (err.message.includes("UNIQUE constraint")) {
+          return res.status(400).json({ success: false, message: "Email already exists" });
+        }
+        
+        return res.status(500).json({ success: false, message: "Database error during registration" });
+      }
+
+      // Clean up temporary data
+      delete otpStore[email];
+      delete tempUserStore[email];
+
+      res.json({ 
+        success: true, 
+        message: "Account verified and created successfully!",
+        userId: this.lastID 
+      });
     }
+  );
 
-    delete otpStore[email];
-    res.json({ success: true, message: "Account verified successfully!" });
-  });
+  stmt.finalize();
 });
 
 
@@ -223,77 +270,75 @@ app.post("/api/signup", async (req, res) => {
     return res.status(400).json({ status: "error", message: "Email and password are required" });
   }
 
-  const role = "job_seeker";
+  // Check if email already exists in database (permanent users)
+  const checkQuery = `SELECT * FROM user WHERE email = ?`;
+  db.get(checkQuery, [email], async (err, existingUser) => {
+    if (err) {
+      console.error("DB Error:", err);
+      return res.status(500).json({ status: "error", message: "Database error" });
+    }
 
-  try {
-    const password_hash = await bcrypt.hash(password, 10);
+    if (existingUser) {
+      return res.status(400).json({ status: "error", message: "Email already exists" });
+    }
 
-    // Insert new user with verified = 0 (unverified)
-    const stmt = db.prepare(`
-      INSERT INTO user (firstname, lastname, birthday, gender, username, email, phone, password_hash, role, verified)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-    `);
+    try {
+      const password_hash = await bcrypt.hash(password, 10);
+      const role = "job_seeker";
 
-    stmt.run(
-      firstname,
-      lastname,
-      birthday,
-      gender,
-      username,
-      email,
-      phone,
-      password_hash,
-      role,
-      async function (err) {
-        if (err) {
-          if (err.message.includes("UNIQUE constraint")) {
-            return res.status(400).json({ status: "error", message: "Email already exists" });
-          }
-          console.error("DB Error:", err);
-          return res.status(500).json({ status: "error", message: "Database error" });
-        }
+      // Store user data temporarily (expires in 10 minutes)
+      tempUserStore[email] = {
+        firstname,
+        lastname,
+        birthday,
+        gender,
+        username,
+        email,
+        phone,
+        password_hash,
+        role,
+        expires: Date.now() + 10 * 60 * 1000 // 10 minutes
+      };
 
-        // Generate OTP (4-digit)
-        const otp = crypto.randomInt(1000, 9999).toString();
-        otpStore[email] = { otp, expires: Date.now() + 5 * 60 * 1000 };
+      // Generate 4-digit OTP
+      const otp = crypto.randomInt(1000, 9999).toString();
+      otpStore[email] = { otp, expires: Date.now() + 5 * 60 * 1000 };
+      const transporter_job = nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+          user: "kayle1410@gmail.com",
+          pass: "vlun efbq wzkx wffq",
+        },
+      });
 
-        const transporter_otp = nodemailer.createTransport({
-          service: "gmail",
-          auth: {
-            user: "kayle1410@gmail.com",
-            pass: "vlun efbq wzkx wffq",
-          },
+      // Send OTP via email
+      try {
+        await transporter_job.sendMail({
+          from: '"TaraTrabaho" <kayle1410@gmail.com>',
+          to: email,
+          subject: "Your TaraTrabaho OTP Code",
+          text: `Your OTP code is ${otp}. It will expire in 5 minutes.`,
         });
 
-        // Send OTP via email
-        try {
-          await transporter_otp.sendMail({
-            from: '"TaraTrabaho" <kayle1410@gmail.com>',
-            to: email,
-            subject: "Your TaraTrabaho OTP Code",
-            text: `Your OTP code is ${otp}. It will expire in 5 minutes.`,
-          });
-
-          res.json({
-            status: "pending",
-            message: "Signup successful! Please verify your email via OTP.",
-            email,
-          });
-        } catch (mailErr) {
-          console.error("Error sending OTP email:", mailErr);
-          res.status(500).json({
-            status: "error",
-            message: "User created but failed to send OTP email.",
-          });
-        }
+        res.json({
+          status: "pending",
+          message: "Please verify your email via OTP to complete registration.",
+          email,
+        });
+      } catch (mailErr) {
+        console.error("Error sending OTP email:", mailErr);
+        // Clean up temporary data if email fails
+        delete tempUserStore[email];
+        res.status(500).json({
+          status: "error",
+          message: "Failed to send OTP email. Please try again.",
+        });
       }
-    );
-
-    stmt.finalize();
-  } catch (error) {
-    console.error("Signup error:", error);
-    res.status(500).json({ status: "error", message: "Server error" });
-  }
+    } catch (error) {
+      console.error("Signup error:", error);
+      res.status(500).json({ status: "error", message: "Server error" });
+    }
+  });
 });
 
 // ============================================================================
