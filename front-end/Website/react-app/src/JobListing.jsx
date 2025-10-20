@@ -23,6 +23,7 @@ const JobListing = () => {
     max_salary: "",
     vacantleft: 1,
     company: "",
+    company_email: "",
     type: "Full-time",
     posted: "",
     tags: "",
@@ -38,6 +39,7 @@ const JobListing = () => {
     max_salary: "",
     vacantleft: 1,
     company: "",
+    company_email: "",
     type: "Full-time",
     posted: "",
     tags: "",
@@ -67,6 +69,7 @@ const JobListing = () => {
           max_salary: job.max_salary,
           vacantleft: job.vacantleft,
           company: job.company,
+          company_email: job.company_email || "",
           type: job.type,
           posted: job.posted,
           tags: job.tags ? job.tags.split(',').map(tag => tag.trim()) : [],
@@ -215,6 +218,7 @@ const JobListing = () => {
       max_salary: "",
       vacantleft: 1,
       company: "",
+      company_email: "",
       type: "Full-time",
       posted: "",
       tags: "",
@@ -247,6 +251,7 @@ const JobListing = () => {
       max_salary: job.max_salary.toString(),
       vacantleft: job.vacantleft,
       company: job.company,
+      company_email: job.company_email || "",  
       type: job.type,
       posted: job.posted,
       tags: Array.isArray(job.tags) ? job.tags.join(', ') : job.tags,
@@ -269,6 +274,7 @@ const JobListing = () => {
       max_salary: "",
       vacantleft: 1,
       company: "",
+      company_email: "",
       type: "Full-time",
       posted: "",
       tags: "",
@@ -326,6 +332,12 @@ const JobListing = () => {
       newErrors.company = "Company name is required";
     }
 
+     if (!newJob.company_email.trim()) {
+    newErrors.company_email = "Company email is required";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newJob.company_email)) {
+      newErrors.company_email = "Please enter a valid email address";
+    }
+
     if (!newJob.location.trim()) {
       newErrors.location = "Location is required";
     }
@@ -374,6 +386,12 @@ const JobListing = () => {
 
     if (!editingJob.company.trim()) {
       newErrors.company = "Company name is required";
+    }
+
+    if (!editingJob.company_email.trim()) {
+      newErrors.company_email = "Company email is required";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editingJob.company_email)) {
+      newErrors.company_email = "Please enter a valid email address";
     }
 
     if (!editingJob.location.trim()) {
@@ -426,6 +444,7 @@ const JobListing = () => {
         max_salary: parseInt(newJob.max_salary),
         vacantleft: parseInt(newJob.vacantleft),
         company: newJob.company,
+        company_email: newJob.company_email,
         type: newJob.type,
         posted: new Date().toISOString().split('T')[0],
         tags: newJob.tags,
@@ -489,6 +508,7 @@ const JobListing = () => {
         max_salary: parseInt(editingJob.max_salary),
         vacantleft: parseInt(editingJob.vacantleft),
         company: editingJob.company,
+        company_email: editingJob.company_email,
         type: editingJob.type,
         posted: editingJob.posted,
         tags: editingJob.tags,
@@ -943,6 +963,33 @@ const JobListing = () => {
                   )}
                 </div>
 
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Company Email <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    name="company_email"
+                    value={newJob.company_email}
+                    onChange={handleInputChange}
+                    placeholder="e.g., hr@techsolutions.com"
+                    className={`w-full px-4 py-3 border-2 rounded-lg focus:outline-none transition-colors ${
+                      errors.company_email 
+                        ? "border-red-400 focus:border-red-500 bg-red-50" 
+                        : "border-gray-200 focus:border-yellow-500"
+                    }`}
+                  />
+                  {errors.company_email && (
+                    <p className="text-red-500 text-sm mt-1 flex items-center">
+                      <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                      {errors.company_email}
+                    </p>
+                  )}
+                  <p className="text-xs text-gray-500 mt-1">Applications will be sent to this email</p>
+                </div>
+
                 {/* Location and Job Type */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
@@ -1256,6 +1303,34 @@ const JobListing = () => {
                       {errors.company}
                     </p>
                   )}
+                </div>
+
+                {/* Company Email */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Company Email <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    name="company_email"
+                    value={editingJob.company_email}
+                    onChange={handleEditInputChange}
+                    placeholder="e.g., hr@techsolutions.com"
+                    className={`w-full px-4 py-3 border-2 rounded-lg focus:outline-none transition-colors ${
+                      errors.company_email 
+                        ? "border-red-400 focus:border-red-500 bg-red-50" 
+                        : "border-gray-200 focus:border-blue-500"
+                    }`}
+                  />
+                  {errors.company_email && (
+                    <p className="text-red-500 text-sm mt-1 flex items-center">
+                      <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                      {errors.company_email}
+                    </p>
+                  )}
+                  <p className="text-xs text-gray-500 mt-1">Applications will be sent to this email</p>
                 </div>
 
                 {/* Location and Job Type */}
