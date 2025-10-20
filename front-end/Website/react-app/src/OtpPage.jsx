@@ -47,6 +47,15 @@ const OtpPage = () => {
 
   const handleVerify = async () => {
     const enteredOtp = otp.join("");
+
+    if (enteredOtp.length !== 4) {
+      setMessage("Please enter a 4-digit OTP");
+      setTimeout(() => setMessage(""), 3000);
+      return;
+    }
+
+    setMessage("Verifying OTP...");
+
     try {
       const res = await fetch("http://localhost:5000/api/verify-otp", {
         method: "POST",
@@ -56,14 +65,51 @@ const OtpPage = () => {
       const data = await res.json();
 
       if (data.success) {
-        alert("OTP verified successfully!");
-        navigate("/taratrabaho");
+        setMessage("✅ OTP verified successfully! Auto-login in progress...");
+        
+        // ✅ Auto-login after successful verification
+        const loginRes = await fetch("http://localhost:5000/api/auto-login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        });
+
+        const loginData = await loginRes.json();
+
+        if (loginData.success) {
+          // Store session data
+          sessionStorage.setItem("token", loginData.token);
+          sessionStorage.setItem("user", JSON.stringify(loginData.user));
+          
+          setMessage("✅ Login successful! Redirecting...");
+          
+          // Wait 1.5 seconds so user can see the success message
+          setTimeout(() => {
+            // Role-based navigation
+            const role = loginData.user.role;
+            if (role === "admin") {
+              navigate("/admin");
+            } else {
+              navigate("/taratrabaho");
+            }
+          }, 3000);
+          
+        } else {
+          setMessage("❌ Auto-login failed. Please login manually.");
+          setTimeout(() => {
+            navigate("/login");
+          }, 2000);
+        }
       } else {
-        alert(data.message);
+        setMessage(`❌ ${data.message || "Verification failed"}`);
+        setTimeout(() => setMessage(""), 3000);
       }
     } catch (err) {
       console.error(err);
-      alert("Verification failed");
+      setMessage("❌ Verification failed due to network error");
+      setTimeout(() => setMessage(""), 3000);
+    } finally {
+      setIsVerifying(false);
     }
   };
 
