@@ -790,13 +790,12 @@ app.post('/api/jobs/recommend', async (req, res) => {
         return res.status(500).json({ error: 'Failed to fetch resume' });
       }
 
-      // If no resume found, return empty recommendations immediately
+      // Return empty if no resume found - SKIP AI processing
       if (!resumeRow || !resumeRow.resume_data) {
-        console.log('❌ No resume found for user:', userId);
+        console.log('No resume found for user:', userId);
         return res.json({
           success: true,
           recommendations: [],
-          totalJobs: 0,
           hasResume: false,
         });
       }
@@ -812,13 +811,12 @@ app.post('/api/jobs/recommend', async (req, res) => {
           objective: resumeData.objective || '',
           summary: resumeData.summary || '',
         };
-        console.log('✅ Resume found for user:', userId);
+        console.log('✅ Resume found for user:', userId, '- Starting AI matching...');
       } catch (e) {
         console.error('Error parsing resume data:', e);
         return res.json({
           success: true,
           recommendations: [],
-          totalJobs: 0,
           hasResume: false,
         });
       }
