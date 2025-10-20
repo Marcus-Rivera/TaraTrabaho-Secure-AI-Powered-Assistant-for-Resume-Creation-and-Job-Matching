@@ -350,7 +350,7 @@ const DashboardSection = () => {
           </div>
         </div>
       )}
-            {/* Job recommendations cards */}
+        {/* Job recommendations cards */}
       {jobsLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[1, 2, 3, 4].map((i) => (
