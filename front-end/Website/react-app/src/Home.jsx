@@ -253,18 +253,25 @@ const Home = () => {
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Mobile toggle button */}
-      <div className="fixed top-4 left-4 xl:hidden z-50">
+      <div className="fixed top-3 left-3 xl:hidden z-50">
         <IconButton 
           onClick={() => setOpen(true)}
+          size="small"
           sx={{
             backgroundColor: '#FBDA23',
+            padding: '8px',
             '&:hover': {
               backgroundColor: '#FFE55C',
+              transform: 'scale(1.05)',
             },
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+            transition: 'all 0.2s ease',
           }}
         >
-          <MenuIcon sx={{ color: '#272343' }} />
+          <MenuIcon sx={{ 
+            color: '#272343', 
+            fontSize: '1.3rem' 
+          }} />
         </IconButton>
       </div>
 

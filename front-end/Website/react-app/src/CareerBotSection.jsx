@@ -83,14 +83,13 @@ const CareerBotSection = () => {
   // 3. Load chat on mount - localStorage first, then databas
   useEffect(() => {
     const loadChatData = async () => {
-      console.log('🔄 CareerBot mounted - loading latest chat...');
+      // console.log('CareerBot mounted - loading latest chat...');
       
       // If user is logged in, load LATEST chat from database
       if (userData && !loading) {
-        console.log('📡 Fetching LATEST chat from database...');
         await loadLastChatFromDatabase();
       } else {
-        console.log('⏳ Waiting for user data to load...');
+        console.log('Waiting for user data to load...');
       }
     };
     
@@ -103,7 +102,7 @@ const CareerBotSection = () => {
 
     if (userData && messages.length > 1 && !isLoading) {
       const timer = setTimeout(async () => {
-        console.log('💾 Auto-saving chat to database...');
+        console.log('Chat Saved');
         await saveChatHistory(true); 
         
         fetchAllUserChats();
@@ -163,7 +162,7 @@ const CareerBotSection = () => {
       let data;
       
       if (lastSavedChatId) {
-        console.log('Updating existing chat:', lastSavedChatId);
+        //console.log('Updating existing chat:', lastSavedChatId);
         response = await fetch(`http://localhost:5000/api/chat/update/${lastSavedChatId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -895,7 +894,7 @@ const CareerBotSection = () => {
         console.log('Resume saved to database:', data);
         setMessages((prev) => [...prev, { 
           from: "bot", 
-          text: "✅ Your resume has been saved to your account!" 
+          text: "Your resume has been saved to your account!" 
         }]);
         return data;
       } else {
@@ -952,7 +951,6 @@ const loadLastChatFromDatabase = async () => {
     // ==========================================
     // 🔑 KEY QUERY: Get LAST chat by timestamp
     // ==========================================
-    console.log('📡 Fetching chat history from database...');
     const response = await fetch(`http://localhost:5000/api/chat/history/${userProfile.user_id}`);
     const data = await response.json();
     
@@ -963,15 +961,15 @@ const loadLastChatFromDatabase = async () => {
       // ==========================================
       const lastChat = data.data[0]; // ← FIRST item = LAST chat (most recent)
       
-      console.log('✅ Loaded chat from database:', lastChat.chat_id);
-      console.log('📅 Chat timestamp:', lastChat.timestamp);
+      console.log('Loaded chat from database:', lastChat.chat_id);
+      console.log('Chat timestamp:', lastChat.timestamp);
       
       // Load the chat data
       setMessages(lastChat.chat_data);
       if (lastChat.resume_data) {
         setResumeData(lastChat.resume_data);
       }
-      setLastSavedChatId(lastChat.chat_id); // ← This is critical!
+      setLastSavedChatId(lastChat.chat_id); 
       setActiveChatId(lastChat.chat_id);
       
       // Determine where user left off
@@ -986,9 +984,9 @@ const loadLastChatFromDatabase = async () => {
       localStorage.setItem('careerbot_step', step);
       localStorage.setItem('careerbot_chatId', lastChat.chat_id.toString());
       
-      console.log('💾 Synced database → localStorage');
+      console.log('Synced database → localStorage');
     } else {
-      console.log('ℹ️ No previous chats found in database');
+      console.log('No previous chats found in database');
     }
   } catch (error) {
     console.error('❌ Error loading chat from database:', error);
@@ -1071,10 +1069,9 @@ const loadLastChatFromDatabase = async () => {
     }
   };
 
-  // Start a brand new chat (not saved yet)
-  // Start a brand new chat (not saved yet)
+  // Starting a new chat
   const handleStartNewChat = () => {
-    console.log('🆕 Starting completely new chat...');
+    console.log('Starting completely new chat...');
     
     // Clear localStorage
     localStorage.removeItem('careerbot_messages');
@@ -1120,16 +1117,98 @@ const loadLastChatFromDatabase = async () => {
     
     setResumeData(freshResumeData);
     
-    console.log('✅ New chat started - all data cleared');
+    console.log('New chat started - all data cleared');
   };
 
-  
+  // Deleting a chat
+  const handleDeleteChat = async (chatId, chatName) => {
+    if (!window.confirm(`Are you sure you want to delete "${chatName}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      console.log('Deleting chat:', chatId);
+      
+      const response = await fetch(`http://localhost:5000/api/chat/${chatId}`, {
+        method: 'DELETE',
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        console.log('Chat deleted successfully');
+        
+        // If deleted chat was active, load the next most recent chat or start new
+        if (activeChatId === chatId) {
+          // Remove deleted chat from list first
+          const updatedChatList = chatHistoryList.filter(chat => chat.chat_id !== chatId);
+          setChatHistoryList(updatedChatList);
+          
+          if (updatedChatList.length > 0) {
+            // Load the most recent remaining chat (first in the list)
+            const nextChat = updatedChatList[0];
+            console.log('Loading next most recent chat:', nextChat.chat_id);
+            
+            // Load the next chat
+            setMessages(nextChat.chat_data);
+            if (nextChat.resume_data) {
+              setResumeData(nextChat.resume_data);
+            }
+            setLastSavedChatId(nextChat.chat_id);
+            setActiveChatId(nextChat.chat_id);
+            
+            // Determine current step
+            const step = determineCurrentStep(nextChat.resume_data);
+            setCurrentStep(step);
+            
+            // Update localStorage
+            localStorage.setItem('careerbot_messages', JSON.stringify(nextChat.chat_data));
+            localStorage.setItem('careerbot_resume', JSON.stringify(nextChat.resume_data));
+            localStorage.setItem('careerbot_step', step);
+            localStorage.setItem('careerbot_chatId', nextChat.chat_id.toString());
+            
+            // Show success message
+            setMessages((prev) => [...prev, { 
+              from: "bot", 
+              text: `✅ Chat deleted successfully! Loaded your previous chat: "${nextChat.resume_data?.personalInfo?.name || 'Unnamed Resume'}"` 
+            }]);
+          } else {
+            // No more chats - start fresh
+            console.log('No more chats - starting new chat');
+            handleStartNewChat();
+            
+            // Show success message after starting new chat
+            setTimeout(() => {
+              setMessages((prev) => [...prev, { 
+                from: "bot", 
+                text: "Chat deleted successfully! Starting a new resume for you." 
+              }]);
+            }, 100);
+          }
+        } else {
+          // Deleted chat was not active - just remove from list
+          setChatHistoryList(prev => prev.filter(chat => chat.chat_id !== chatId));
+          
+          // Show success message
+          setMessages((prev) => [...prev, { 
+            from: "bot", 
+            text: "✅ Chat deleted successfully!" 
+          }]);
+        }
+      } else {
+        throw new Error(data.error || 'Failed to delete chat');
+      }
+    } catch (error) {
+      console.error('❌ Error deleting chat:', error);
+      setError(`Failed to delete chat: ${error.message}`);
+    }
+  };
 
   return (
     <div className="flex flex-col h-screen overflow-hidden pt-5 bg-white">
       {/* Chat History Button */}
       <div className="px-6 pb-3 flex justify-between items-center border-b">
-        <h2 className="text-lg font-bold text-gray-900">Resume Builder</h2>
+        <h2 className="text-lg font-bold text-gray-900 pl-5 md:pl-4">Resume Builder</h2>
         <button
           onClick={() => {
             setShowChatHistory(true);
@@ -1444,38 +1523,67 @@ const loadLastChatFromDatabase = async () => {
                     });
 
                     return (
-                      <button
+                      <div
                         key={chat.chat_id}
-                        onClick={() => loadChatById(chat.chat_id)}
-                        className={`w-full p-4 rounded-lg border-2 text-left transition-all ${
+                        className={`relative w-full p-4 rounded-lg border-2 transition-all ${
                           isActive
                             ? 'border-yellow-400 bg-yellow-50'
                             : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                         }`}
                       >
-                        <div className="flex items-start gap-3">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-                            isActive ? 'bg-yellow-400' : 'bg-gray-200'
-                          }`}>
-                            <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
+                        {/* Clickable area to load chat */}
+                        <button
+                          onClick={() => loadChatById(chat.chat_id)}
+                          className="w-full text-left"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+                              isActive ? 'bg-yellow-400' : 'bg-gray-200'
+                            }`}>
+                              <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <h3 className="font-semibold text-gray-900 truncate">
+                                {resumeName}
+                              </h3>
+                              <p className="text-xs text-gray-500 mt-1">
+                                {chatDate}
+                              </p>
+                              {isActive && (
+                                <span className="inline-block mt-2 text-xs font-semibold text-yellow-700 bg-yellow-100 px-2 py-1 rounded">
+                                  Active
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <h3 className="font-semibold text-gray-900 truncate">
-                              {resumeName}
-                            </h3>
-                            <p className="text-xs text-gray-500 mt-1">
-                              {chatDate}
-                            </p>
-                            {isActive && (
-                              <span className="inline-block mt-2 text-xs font-semibold text-yellow-700 bg-yellow-100 px-2 py-1 rounded">
-                                Active
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </button>
+                        </button>
+
+                        {/* Delete Button - Top Right Corner */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation(); // Prevent loading chat when clicking delete
+                            handleDeleteChat(chat.chat_id, resumeName);
+                          }}
+                          className="absolute top-2 right-2 p-1.5 rounded-full hover:bg-red-100 transition-colors group"
+                          title="Delete chat"
+                        >
+                          <svg 
+                            className="w-4 h-4 text-gray-400 group-hover:text-red-600 transition-colors" 
+                            fill="none" 
+                            stroke="currentColor" 
+                            viewBox="0 0 24 24"
+                          >
+                            <path 
+                              strokeLinecap="round" 
+                              strokeLinejoin="round" 
+                              strokeWidth={2} 
+                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" 
+                            />
+                          </svg>
+                        </button>
+                      </div>
                     );
                   })}
                 </div>
