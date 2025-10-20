@@ -7,7 +7,7 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const nodemailer = require("nodemailer");
 const crypto = require("crypto");
-import dotenv from "dotenv";
+const dotenv = require("dotenv");
 dotenv.config();
 // Test for Resume Saver
 const multer = require('multer');
