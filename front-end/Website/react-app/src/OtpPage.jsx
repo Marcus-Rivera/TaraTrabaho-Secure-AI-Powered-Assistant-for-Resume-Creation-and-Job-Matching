@@ -57,7 +57,7 @@ const OtpPage = () => {
 
       if (data.success) {
         alert("OTP verified successfully!");
-        navigate("/tratrabaho");
+        navigate("/taratrabaho");
       } else {
         alert(data.message);
       }
