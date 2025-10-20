@@ -24,6 +24,7 @@ import {
   FormControlLabel,
   FormControl,
   FormLabel,
+  Snackbar,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
@@ -37,6 +38,8 @@ import Groups2Icon from '@mui/icons-material/Groups2';
 import CloseIcon from '@mui/icons-material/Close';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import DescriptionIcon from '@mui/icons-material/Description';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import ErrorIcon from '@mui/icons-material/Error';
 import { useSessionCheck } from "../useSessionCheck";
 
 const JobListingsSection = () => {
@@ -61,6 +64,13 @@ const JobListingsSection = () => {
     phone: '',
     coverLetter: '',
     resume: null,
+  });
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'success', // 'success' | 'error' | 'warning' | 'info'
   });
 
   // Fetch jobs from backend
@@ -131,23 +141,102 @@ const JobListingsSection = () => {
     fetchUserResumes();
   }, [userData]);
 
-  // Load saved jobs from localStorage
+  // Fetch saved jobs from database
   useEffect(() => {
-    const saved = JSON.parse(localStorage.getItem('savedJobs') || '[]');
-    setSavedJobs(saved);
-  }, []);
+    const fetchSavedJobs = async () => {
+      if (!userData?.email) return;
 
-  // Save to localStorage whenever savedJobs changes
-  useEffect(() => {
-    localStorage.setItem('savedJobs', JSON.stringify(savedJobs));
-  }, [savedJobs]);
+      try {
+        const profileResponse = await fetch(`http://localhost:5000/api/profile/${userData.email}`);
+        const userProfile = await profileResponse.json();
+        
+        if (!userProfile || !userProfile.user_id) return;
 
-  const toggleSaveJob = (jobId) => {
-    setSavedJobs(prev => 
-      prev.includes(jobId) 
-        ? prev.filter(id => id !== jobId)
-        : [...prev, jobId]
-    );
+        const response = await fetch(`http://localhost:5000/api/saved-jobs/${userProfile.user_id}`);
+        const data = await response.json();
+
+        if (data.success) {
+          // Extract just the job IDs for the savedJobs state
+          const jobIds = data.savedJobs.map(saved => saved.job_id);
+          setSavedJobs(jobIds);
+        }
+      } catch (err) {
+        console.error('Error fetching saved jobs:', err);
+      }
+    };
+
+    fetchSavedJobs();
+  }, [userData]);
+
+
+  const handleCloseSnackbar = (event, reason) => {
+    if (reason === 'clickaway') {
+      return;
+    }
+    setSnackbar({ ...snackbar, open: false });
+  };
+
+  const showSnackbar = (message, severity = 'success') => {
+    setSnackbar({
+      open: true,
+      message,
+      severity,
+    });
+  };
+
+  const toggleSaveJob = async (jobId) => {
+    if (!userData?.email) {
+      showSnackbar('Please log in to save jobs', 'warning');
+      return;
+    }
+
+    try {
+      const profileResponse = await fetch(`http://localhost:5000/api/profile/${userData.email}`);
+      const userProfile = await profileResponse.json();
+      
+      if (!userProfile || !userProfile.user_id) {
+        showSnackbar('User profile not found', 'error');
+        return;
+      }
+
+      const userId = userProfile.user_id;
+      const isSaved = savedJobs.includes(jobId);
+
+      if (isSaved) {
+        // Unsave the job
+        const response = await fetch(`http://localhost:5000/api/saved-jobs/${userId}/${jobId}`, {
+          method: 'DELETE',
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+          setSavedJobs(prev => prev.filter(id => id !== jobId));
+          showSnackbar('Job removed from saved list', 'info');
+        } else {
+          showSnackbar('Failed to unsave job', 'error');
+        }
+      } else {
+        // Save the job
+        const response = await fetch('http://localhost:5000/api/saved-jobs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, jobId }),
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+          setSavedJobs(prev => [...prev, jobId]);
+          showSnackbar('Job saved successfully', 'success');
+        } else {
+          showSnackbar('Failed to save job', 'error');
+        }
+      }
+    } catch (error) {
+      console.error('Error toggling saved job:', error);
+      showSnackbar('An error occurred', 'error');
+    }
   };
 
   const handleApplyClick = (job) => {
@@ -161,6 +250,7 @@ const JobListingsSection = () => {
   };
 
   const handleCloseApplyModal = () => {
+    if (isSubmitting) return;
     setApplyModalOpen(false);
     setResumeOption('upload');
     setSelectedResumeId('');
@@ -177,36 +267,82 @@ const JobListingsSection = () => {
     setDetailsModalOpen(false);
   };
 
+  // handleApplicationSubmit
   const handleApplicationSubmit = async () => {
-    let resumeToSubmit = null;
-
-    if (resumeOption === 'saved' && selectedResumeId) {
-      // Fetch the selected resume from database
-      try {
-        const response = await fetch(`http://localhost:5000/api/resume/download/${selectedResumeId}`);
-        if (response.ok) {
-          const blob = await response.blob();
-          const selectedResume = userResumes.find(r => r.resume_id === parseInt(selectedResumeId));
-          resumeToSubmit = new File([blob], selectedResume.filename, { type: 'application/pdf' });
-        }
-      } catch (err) {
-        console.error('Error fetching saved resume:', err);
-        alert('Failed to retrieve saved resume');
-        return;
-      }
-    } else {
-      resumeToSubmit = applicationData.resume;
+    // Prevent multiple submissions
+    if (isSubmitting) {
+      return;
     }
 
-    console.log('Application submitted:', {
-      ...applicationData,
-      resume: resumeToSubmit,
-      job: selectedJob,
-      resumeSource: resumeOption,
-    });
-    
-    alert('Application submitted successfully!');
-    handleCloseApplyModal();
+    try {
+      setIsSubmitting(true);
+
+      // Get user ID from userData
+      const userId = userData?.user_id || userData?.id;
+      
+      if (!userId) {
+        showSnackbar('Please log in to apply for jobs', 'error');
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Validate required fields
+      if (!applicationData.fullName || !applicationData.email || !applicationData.phone) {
+        showSnackbar('Please fill in all required fields', 'warning');
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (resumeOption === 'upload' && !applicationData.resume) {
+        showSnackbar('Please upload a resume', 'warning');
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (resumeOption === 'saved' && !selectedResumeId) {
+        showSnackbar('Please select a resume', 'warning');
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Create FormData
+      const formData = new FormData();
+      formData.append('userId', userId);
+      formData.append('jobId', selectedJob.id);
+      formData.append('fullName', applicationData.fullName);
+      formData.append('email', applicationData.email);
+      formData.append('phone', applicationData.phone);
+      formData.append('coverLetter', applicationData.coverLetter);
+      formData.append('resumeSource', resumeOption);
+
+      if (resumeOption === 'upload') {
+        formData.append('resume', applicationData.resume);
+      } else {
+        formData.append('resumeId', selectedResumeId);
+      }
+
+      // Submit application
+      const response = await fetch('http://localhost:5000/api/jobs/apply', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        showSnackbar(result.message || 'Application submitted successfully!', 'success');
+        handleCloseApplyModal();
+        setIsSubmitting(false);
+      } else {
+        showSnackbar(result.error || 'Failed to submit application', 'error');
+        setIsSubmitting(false);
+      }
+
+    } catch (error) {
+      console.error('Error submitting application:', error);
+      showSnackbar('An error occurred while submitting your application. Please try again.', 'error');
+      setIsSubmitting(false);
+    }
   };
 
   const handleFileChange = (e) => {
@@ -664,25 +800,18 @@ const JobListingsSection = () => {
           )}
         </DialogContent>
         <DialogActions sx={{ p: 3 }}>
-          <Button 
-            onClick={handleCloseApplyModal}
-            sx={{
-              color: '#272343',
-              fontWeight: 'bold',
-            }}
-          >
-            Cancel
-          </Button>
           <Button
             onClick={handleApplicationSubmit}
             variant="contained"
             disabled={
+              isSubmitting ||
               !applicationData.fullName || 
               !applicationData.email || 
               !applicationData.phone ||
               (resumeOption === 'upload' && !applicationData.resume) ||
               (resumeOption === 'saved' && !selectedResumeId)
             }
+            startIcon={isSubmitting && <CircularProgress size={20} sx={{ color: '#272343' }} />}
             sx={{
               backgroundColor: '#FBDA23',
               color: '#272343',
@@ -696,7 +825,7 @@ const JobListingsSection = () => {
               },
             }}
           >
-            Submit Application
+            {isSubmitting ? 'Submitting...' : 'Submit Application'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -840,6 +969,26 @@ const JobListingsSection = () => {
           </Button>
         </DialogActions>
       </Dialog>
+       <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={handleCloseSnackbar}
+          severity={snackbar.severity}
+          variant="filled"
+          icon={snackbar.severity === 'success' ? <CheckCircleIcon /> : <ErrorIcon />}
+          sx={{
+            width: '100%',
+            fontSize: '1rem',
+            fontWeight: 'bold',
+          }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </div>
   );
 };

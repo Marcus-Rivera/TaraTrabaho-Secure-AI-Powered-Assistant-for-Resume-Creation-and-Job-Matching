@@ -245,7 +245,7 @@ const DashboardSection = () => {
                 <div className="text-lg xl:text-2xl font-bold mt-1 text-[#272343]">
                   {stats.applications} Application{stats.applications !== 1 ? 's' : ''}
                 </div>
-                <div className="text-sm font-semibold text-[#272343]/77">Application Submitted</div>
+                <div className="text-sm font-semibold text-[#272343]/77">Applications Submitted</div>
               </div>
             </div>
 
@@ -278,7 +278,7 @@ const DashboardSection = () => {
                 <div className="text-lg xl:text-2xl font-bold mt-1 text-[#272343]">
                   {stats.resumes} Resume{stats.resumes !== 1 ? 's' : ''}
                 </div>
-                <div className="text-sm font-semibold text-[#272343]/77">Resume Generated</div>
+                <div className="text-sm font-semibold text-[#272343]/77">Resumes Generated</div>
               </div>
             </div>
 
@@ -300,7 +300,7 @@ const DashboardSection = () => {
       {/* Job Recommendations Section */}
       <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-3 mb-4">
         <h2 className="text-xl md:text-2xl font-bold text-[#272343]">
-          Job Recommendations {hasResume && '✨'}
+          Job Recommendations {hasResume && ''}
         </h2>
         <Button
           variant="outlined"
@@ -342,7 +342,7 @@ const DashboardSection = () => {
           <CircularProgress size={24} sx={{ color: '#272343' }} />
           <div className="text-center md:text-left">
             <p className="text-[#272343] font-bold text-base md:text-lg">
-              🤖 AI is analyzing jobs for you...
+              AI is analyzing jobs for you...
             </p>
             <p className="text-[#272343]/70 text-xs md:text-sm">
               Finding the best matches based on your profile
