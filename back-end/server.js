@@ -1501,6 +1501,125 @@ app.delete('/api/saved-jobs/:userId/:jobId', (req, res) => {
 });
 
 
+
+// ============================================================================
+// PROFILE PICTURE ENDPOINTS
+// ============================================================================
+
+// Configure multer for profile pictures
+const profilePictureStorage = multer.memoryStorage();
+const profilePictureUpload = multer({
+  storage: profilePictureStorage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+
+    if (mimetype && extname) {
+      return cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed!'));
+    }
+  },
+});
+
+// Upload profile picture
+app.post('/api/profile-picture/upload', profilePictureUpload.single('profilePicture'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const { userId } = req.body;
+    const imageData = req.file.buffer;
+    const mimeType = req.file.mimetype;
+
+    // Check if user already has a profile picture
+    const checkQuery = 'SELECT picture_id FROM profile_picture WHERE user_id = ?';
+    
+    db.get(checkQuery, [userId], (err, row) => {
+      if (err) {
+        console.error('Database error:', err);
+        return res.status(500).json({ error: 'Failed to upload profile picture' });
+      }
+
+      if (row) {
+        // Update existing profile picture
+        const updateQuery = 'UPDATE profile_picture SET image_data = ?, mime_type = ?, uploaded_at = ? WHERE user_id = ?';
+        const uploadedAt = new Date().toISOString();
+        
+        db.run(updateQuery, [imageData, mimeType, uploadedAt, userId], function(err) {
+          if (err) {
+            console.error('Database error:', err);
+            return res.status(500).json({ error: 'Failed to update profile picture' });
+          }
+          res.json({ success: true, message: 'Profile picture updated successfully' });
+        });
+      } else {
+        // Insert new profile picture
+        const insertQuery = 'INSERT INTO profile_picture (user_id, image_data, mime_type, uploaded_at) VALUES (?, ?, ?, ?)';
+        const uploadedAt = new Date().toISOString();
+        
+        db.run(insertQuery, [userId, imageData, mimeType, uploadedAt], function(err) {
+          if (err) {
+            console.error('Database error:', err);
+            return res.status(500).json({ error: 'Failed to save profile picture' });
+          }
+          res.json({ success: true, message: 'Profile picture uploaded successfully' });
+        });
+      }
+    });
+  } catch (error) {
+    console.error('Error uploading profile picture:', error);
+    res.status(500).json({ error: 'Failed to upload profile picture' });
+  }
+});
+
+// Get profile picture
+app.get('/api/profile-picture/:userId', (req, res) => {
+  const { userId } = req.params;
+  
+  const query = 'SELECT image_data, mime_type FROM profile_picture WHERE user_id = ?';
+  
+  db.get(query, [userId], (err, row) => {
+    if (err) {
+      console.error('Database error:', err);
+      return res.status(500).json({ error: 'Failed to retrieve profile picture' });
+    }
+    
+    if (!row) {
+      return res.status(404).json({ error: 'Profile picture not found' });
+    }
+    
+    res.setHeader('Content-Type', row.mime_type);
+    res.send(row.image_data);
+  });
+});
+
+// Delete profile picture
+app.delete('/api/profile-picture/:userId', (req, res) => {
+  const { userId } = req.params;
+  
+  const query = 'DELETE FROM profile_picture WHERE user_id = ?';
+  
+  db.run(query, [userId], function(err) {
+    if (err) {
+      console.error('Database error:', err);
+      return res.status(500).json({ error: 'Failed to delete profile picture' });
+    }
+    
+    if (this.changes === 0) {
+      return res.status(404).json({ error: 'Profile picture not found' });
+    }
+    
+    res.json({ success: true, message: 'Profile picture deleted successfully' });
+  });
+});
+
+
 // ============================================================================
 // SERVER START
 // ============================================================================
