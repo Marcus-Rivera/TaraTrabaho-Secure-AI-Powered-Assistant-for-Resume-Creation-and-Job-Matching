@@ -6,6 +6,9 @@ const bodyParser = require("body-parser");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const SECRET_KEY = "your-secret-key"; // Use .env for real projects
+const nodemailer = require("nodemailer");
+const crypto = require("crypto");
+const otpStore = {};
 
 // Test for Resume Saver
 const multer = require('multer');
@@ -123,6 +126,79 @@ app.post("/api/login", async (req, res) => {
 });
 
 // ============================================================================
+// OTP 
+// ============================================================================
+app.post("/api/auto-login", (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ success: false, message: "Email is required" });
+  }
+
+  // Retrieve user from database
+  const query = `SELECT * FROM user WHERE email = ? AND verified = 1`;
+  db.get(query, [email], (err, user) => {
+    if (err) {
+      console.error("DB Error:", err);
+      return res.status(500).json({ success: false, message: "Database error" });
+    }
+
+    if (!user) {
+      return res.status(401).json({ success: false, message: "User not found or not verified" });
+    }
+
+    // Create JWT token
+    const token = jwt.sign(
+      { id: user.user_id, email: user.email, role: user.role }, 
+      SECRET_KEY, 
+      { expiresIn: "1h" }
+    );
+
+    res.json({
+      success: true,
+      message: "Auto-login successful",
+      token,
+      user: {
+        id: user.user_id,
+        email: user.email,
+        firstname: user.firstname,
+        lastname: user.lastname,
+        role: user.role,
+      },
+    });
+  });
+});
+
+// Verify OTP
+app.post("/api/verify-otp", (req, res) => {
+  const { email, otp } = req.body;
+
+  if (!email || !otp) {
+    return res.status(400).json({ message: "Email and OTP are required" });
+  }
+
+  const record = otpStore[email];
+  if (!record) return res.status(400).json({ success: false, message: "No OTP sent for this email" });
+  if (Date.now() > record.expires) {
+    delete otpStore[email];
+    return res.status(400).json({ success: false, message: "OTP expired" });
+  }
+  if (record.otp !== otp) return res.status(400).json({ success: false, message: "Invalid OTP" });
+
+  // ✅ Mark user as verified
+  db.run("UPDATE user SET verified = 1 WHERE email = ?", [email], function (err) {
+    if (err) {
+      console.error("DB Error:", err);
+      return res.status(500).json({ success: false, message: "Database error" });
+    }
+
+    delete otpStore[email];
+    res.json({ success: true, message: "Account verified successfully!" });
+  });
+});
+
+
+// ============================================================================
 // VERIFY TOKEN ENDPOINT
 // ============================================================================
 app.post("/api/verifyToken", (req, res) => {
@@ -143,7 +219,6 @@ app.post("/api/verifyToken", (req, res) => {
 app.post("/api/signup", async (req, res) => {
   const { firstname, lastname, birthday, gender, username, email, phone, password } = req.body;
 
-  // Validate required fields
   if (!email || !password) {
     return res.status(400).json({ status: "error", message: "Email and password are required" });
   }
@@ -151,16 +226,14 @@ app.post("/api/signup", async (req, res) => {
   const role = "job_seeker";
 
   try {
-    // Hash password securely
     const password_hash = await bcrypt.hash(password, 10);
 
-    // Prepare SQL statement
+    // Insert new user with verified = 0 (unverified)
     const stmt = db.prepare(`
-      INSERT INTO user (firstname, lastname, birthday, gender, username, email, phone, password_hash, role)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO user (firstname, lastname, birthday, gender, username, email, phone, password_hash, role, verified)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
     `);
 
-    // Execute the statement
     stmt.run(
       firstname,
       lastname,
@@ -171,9 +244,8 @@ app.post("/api/signup", async (req, res) => {
       phone,
       password_hash,
       role,
-      function (err) {
+      async function (err) {
         if (err) {
-          // Handle duplicate email or other DB errors
           if (err.message.includes("UNIQUE constraint")) {
             return res.status(400).json({ status: "error", message: "Email already exists" });
           }
@@ -181,12 +253,39 @@ app.post("/api/signup", async (req, res) => {
           return res.status(500).json({ status: "error", message: "Database error" });
         }
 
-        // Success response
-        res.json({
-          status: "success",
-          message: "User registered successfully",
-          userId: this.lastID,
+        // Generate OTP (4-digit)
+        const otp = crypto.randomInt(1000, 9999).toString();
+        otpStore[email] = { otp, expires: Date.now() + 5 * 60 * 1000 };
+
+        const transporter_otp = nodemailer.createTransport({
+          service: "gmail",
+          auth: {
+            user: "kayle1410@gmail.com",
+            pass: "vlun efbq wzkx wffq",
+          },
         });
+
+        // Send OTP via email
+        try {
+          await transporter_otp.sendMail({
+            from: '"TaraTrabaho" <kayle1410@gmail.com>',
+            to: email,
+            subject: "Your TaraTrabaho OTP Code",
+            text: `Your OTP code is ${otp}. It will expire in 5 minutes.`,
+          });
+
+          res.json({
+            status: "pending",
+            message: "Signup successful! Please verify your email via OTP.",
+            email,
+          });
+        } catch (mailErr) {
+          console.error("Error sending OTP email:", mailErr);
+          res.status(500).json({
+            status: "error",
+            message: "User created but failed to send OTP email.",
+          });
+        }
       }
     );
 
@@ -1011,10 +1110,9 @@ app.get('/api/stats/:userId', (req, res) => {
 // Add this to your server.js file
 // Make sure to install nodemailer: npm install nodemailer
 
-const nodemailer = require('nodemailer');
 
 // Email Configuration (add this near the top of server.js)
-const EMAIL_CONFIG = {
+const EMAIL_CONFIG_JOB = {
   service: 'gmail', // or 'outlook', 'yahoo', etc.
   auth: {
     user: 'wantedspexz@gmail.com', // Your email
@@ -1022,7 +1120,7 @@ const EMAIL_CONFIG = {
   }
 };
 
-const transporter = nodemailer.createTransport(EMAIL_CONFIG);
+const transporter = nodemailer.createTransport(EMAIL_CONFIG_JOB);
 
 // ============================================================================
 // JOB APPLICATION ENDPOINT - Complete Version
@@ -1115,7 +1213,7 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
 
     // 📧 SEND EMAIL TO COMPANY
     const companyMailOptions = {
-      from: EMAIL_CONFIG.auth.user,
+      from: EMAIL_CONFIG_JOB.auth.user,
       to: job.company_email,
       replyTo: email, // Company can reply directly to applicant
       subject: `New Job Application: ${job.title} - ${fullName}`,
@@ -1158,7 +1256,7 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
 
     // 📧 SEND CONFIRMATION EMAIL TO APPLICANT
     const applicantMailOptions = {
-      from: EMAIL_CONFIG.auth.user,
+      from: EMAIL_CONFIG_JOB.auth.user,
       to: email,
       subject: `✅ Application Submitted - ${job.title} at ${job.company}`,
       html: `
