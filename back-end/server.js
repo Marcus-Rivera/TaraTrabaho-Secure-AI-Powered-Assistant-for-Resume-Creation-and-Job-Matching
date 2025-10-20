@@ -7,8 +7,8 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const nodemailer = require("nodemailer");
 const crypto = require("crypto");
-const SECRET_KEY = "your-secret-key"; // Use .env for real projects
-
+import dotenv from "dotenv";
+dotenv.config();
 // Test for Resume Saver
 const multer = require('multer');
 const path = require('path');
@@ -16,8 +16,10 @@ const path = require('path');
 // Initialize Express application
 const app = express();
 
-// Gemini API Key
-const GEMINI_API_KEY = "AIzaSyD-QXNB8c8jiYNisBRSU33GcyP1txqhjt0";
+// Keys
+const SECRET_KEY = process.env.SECRET_KEY;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const PORT = process.env.PORT;
 
 // Middleware configuration
 app.use(cors());
@@ -31,14 +33,15 @@ const db = new sqlite3.Database("tratrabaho.db");
 const otpStore = {};
 
 // Configure Nodemailer transporter (use real credentials)
-const transporter = nodemailer.createTransport({
-  service: "gmail", // or "Outlook", "Yahoo", etc.
+const EMAIL_CONFIG = {
+  service: "gmail",
   auth: {
-    user: "kayle1410@gmail.com",
-    pass: "ipcb decf eall jkxe", // NOT your Gmail password
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
   },
-});
+};
 
+const transporter = nodemailer.createTransport(EMAIL_CONFIG);
 // ============================================================================
 // SEND OTP
 // ============================================================================
@@ -1433,5 +1436,4 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
 // ============================================================================
 // SERVER START
 // ============================================================================
-const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`✅ Server running on http://localhost:${PORT}`));
