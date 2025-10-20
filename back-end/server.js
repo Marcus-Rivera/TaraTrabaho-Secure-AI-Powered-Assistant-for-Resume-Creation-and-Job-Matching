@@ -790,20 +790,37 @@ app.post('/api/jobs/recommend', async (req, res) => {
         return res.status(500).json({ error: 'Failed to fetch resume' });
       }
 
+      // If no resume found, return empty recommendations immediately
+      if (!resumeRow || !resumeRow.resume_data) {
+        console.log('❌ No resume found for user:', userId);
+        return res.json({
+          success: true,
+          recommendations: [],
+          totalJobs: 0,
+          hasResume: false,
+        });
+      }
+
+      // Parse resume data
       let userProfile = {};
-      if (resumeRow && resumeRow.resume_data) {
-        try {
-          const resumeData = JSON.parse(resumeRow.resume_data);
-          userProfile = {
-            skills: resumeData.skills || [],
-            experience: resumeData.experience || [],
-            education: resumeData.education || [],
-            objective: resumeData.objective || '',
-            summary: resumeData.summary || '',
-          };
-        } catch (e) {
-          console.error('Error parsing resume data:', e);
-        }
+      try {
+        const resumeData = JSON.parse(resumeRow.resume_data);
+        userProfile = {
+          skills: resumeData.skills || [],
+          experience: resumeData.experience || [],
+          education: resumeData.education || [],
+          objective: resumeData.objective || '',
+          summary: resumeData.summary || '',
+        };
+        console.log('✅ Resume found for user:', userId);
+      } catch (e) {
+        console.error('Error parsing resume data:', e);
+        return res.json({
+          success: true,
+          recommendations: [],
+          totalJobs: 0,
+          hasResume: false,
+        });
       }
 
       // 2. Fetch all jobs
