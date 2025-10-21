@@ -443,7 +443,7 @@ const DashboardSection = () => {
                 <div className="flex items-center justify-between">
                   <button 
                     onClick={() => handleApplyClick(job)}
-                    className="px-4 py-1.5 bg-[#FBDA23] text-[#272343] text-sm rounded font-bold hover:bg-[#FFE55C] transition-colors"
+                    className="px-4 py-1.5 bg-[#FBDA23] text-[#272343] text-sm rounded font-bold hover:bg-[#FFE55C] transition-colors cursor-pointer"
                   >
                     Apply
                   </button>

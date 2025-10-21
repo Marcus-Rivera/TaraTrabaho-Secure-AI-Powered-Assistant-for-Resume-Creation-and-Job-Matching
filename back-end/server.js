@@ -2029,8 +2029,8 @@ app.post("/api/auth/google", async (req, res) => {
       let user;
 
       if (existingUser) {
-        // ✅ User exists - log them in
-        console.log("✅ Existing user found:", email);
+
+        //console.log("✅ Existing user found:", email);
         user = existingUser;
 
         // Check if account is suspended
@@ -2060,7 +2060,7 @@ app.post("/api/auth/google", async (req, res) => {
         });
 
       } else {
-        console.log("🆕 Creating new user from Google:", email);
+        //console.log("🆕 Creating new user from Google:", email);
 
         // Extract username from email (before @)
         const username = email.split('@')[0];
@@ -2088,7 +2088,7 @@ app.post("/api/auth/google", async (req, res) => {
                   reject(err);
                 }
               } else {
-                console.log("✅ User created successfully with ID:", this.lastID);
+                //console.log("✅ User created successfully with ID:", this.lastID);
                 
                 // Fetch the newly created user
                 db.get('SELECT * FROM user WHERE user_id = ?', [this.lastID], (err, newUser) => {

@@ -149,7 +149,7 @@ function LoginForm() {
   const handleGoogleSuccess = async (credentialResponse) => {
     try {
       setIsLoading(true);
-      console.log("🔐 Google login initiated...");
+      //console.log("🔐 Google login initiated...");
 
       // Decode JWT token from Google
       const decoded = jwtDecode(credentialResponse.credential);
