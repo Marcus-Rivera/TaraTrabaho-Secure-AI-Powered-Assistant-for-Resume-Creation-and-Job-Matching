@@ -95,7 +95,18 @@ app.post("/api/login", async (req, res) => {
 
     // Handle case where no user matches the provided email
     if (!user) {
-      return res.status(401).json({ status: "error", message: "Invalid email or password" });
+      return res.status(401).json({ 
+        status: "error", 
+        message: "Invalid email or password" 
+      });
+    }
+
+    // CHECK IF USER ACCOUNT IS SUSPENDED
+    if (user.status === 'suspended') {
+      return res.status(403).json({ 
+        status: "suspended", 
+        message: "Your account has been suspended. Please contact support at taratrabaho@gmail.com for assistance." 
+      });
     }
 
     // Compare provided password with the hashed password in the database
@@ -103,14 +114,20 @@ app.post("/api/login", async (req, res) => {
 
     // Handle invalid password case
     if (!match) {
-      return res.status(401).json({ status: "error", message: "Invalid email or password" });
+      return res.status(401).json({ 
+        status: "error", 
+        message: "Invalid email or password" 
+      });
     }
 
     // Create JWT (expires in 1 hour) 
-    const token = jwt.sign({ id: user.user_id, email: user.email, role: user.role }, SECRET_KEY, 
-      {expiresIn: "1h",});
+    const token = jwt.sign(
+      { id: user.user_id, email: user.email, role: user.role }, 
+      SECRET_KEY, 
+      { expiresIn: "1h" }
+    );
 
-     // Successful authentication → send user info (but omit sensitive data)
+    // Successful authentication → send user info (but omit sensitive data)
     return res.json({
       success: true,
       message: "Login successful",
@@ -121,6 +138,7 @@ app.post("/api/login", async (req, res) => {
         firstname: user.firstname,
         lastname: user.lastname,
         role: user.role,
+        status: user.status,
       },
     });
   });
@@ -1497,6 +1515,244 @@ app.delete('/api/saved-jobs/:userId/:jobId', (req, res) => {
     }
     
     res.json({ success: true, message: 'Job unsaved successfully' });
+  });
+});
+
+
+
+// ============================================================================
+// PROFILE PICTURE ENDPOINTS
+// ============================================================================
+
+// Configure multer for profile pictures
+const profilePictureStorage = multer.memoryStorage();
+const profilePictureUpload = multer({
+  storage: profilePictureStorage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+
+    if (mimetype && extname) {
+      return cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed!'));
+    }
+  },
+});
+
+// Upload profile picture
+app.post('/api/profile-picture/upload', profilePictureUpload.single('profilePicture'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const { userId } = req.body;
+    const imageData = req.file.buffer;
+    const mimeType = req.file.mimetype;
+
+    // Check if user already has a profile picture
+    const checkQuery = 'SELECT picture_id FROM profile_picture WHERE user_id = ?';
+    
+    db.get(checkQuery, [userId], (err, row) => {
+      if (err) {
+        console.error('Database error:', err);
+        return res.status(500).json({ error: 'Failed to upload profile picture' });
+      }
+
+      if (row) {
+        // Update existing profile picture
+        const updateQuery = 'UPDATE profile_picture SET image_data = ?, mime_type = ?, uploaded_at = ? WHERE user_id = ?';
+        const uploadedAt = new Date().toISOString();
+        
+        db.run(updateQuery, [imageData, mimeType, uploadedAt, userId], function(err) {
+          if (err) {
+            console.error('Database error:', err);
+            return res.status(500).json({ error: 'Failed to update profile picture' });
+          }
+          res.json({ success: true, message: 'Profile picture updated successfully' });
+        });
+      } else {
+        // Insert new profile picture
+        const insertQuery = 'INSERT INTO profile_picture (user_id, image_data, mime_type, uploaded_at) VALUES (?, ?, ?, ?)';
+        const uploadedAt = new Date().toISOString();
+        
+        db.run(insertQuery, [userId, imageData, mimeType, uploadedAt], function(err) {
+          if (err) {
+            console.error('Database error:', err);
+            return res.status(500).json({ error: 'Failed to save profile picture' });
+          }
+          res.json({ success: true, message: 'Profile picture uploaded successfully' });
+        });
+      }
+    });
+  } catch (error) {
+    console.error('Error uploading profile picture:', error);
+    res.status(500).json({ error: 'Failed to upload profile picture' });
+  }
+});
+
+// Get profile picture
+app.get('/api/profile-picture/:userId', (req, res) => {
+  const { userId } = req.params;
+  
+  const query = 'SELECT image_data, mime_type FROM profile_picture WHERE user_id = ?';
+  
+  db.get(query, [userId], (err, row) => {
+    if (err) {
+      console.error('Database error:', err);
+      return res.status(500).json({ error: 'Failed to retrieve profile picture' });
+    }
+    
+    if (!row) {
+      return res.status(404).json({ error: 'Profile picture not found' });
+    }
+    
+    res.setHeader('Content-Type', row.mime_type);
+    res.send(row.image_data);
+  });
+});
+
+// Delete profile picture
+app.delete('/api/profile-picture/:userId', (req, res) => {
+  const { userId } = req.params;
+  
+  const query = 'DELETE FROM profile_picture WHERE user_id = ?';
+  
+  db.run(query, [userId], function(err) {
+    if (err) {
+      console.error('Database error:', err);
+      return res.status(500).json({ error: 'Failed to delete profile picture' });
+    }
+    
+    if (this.changes === 0) {
+      return res.status(404).json({ error: 'Profile picture not found' });
+    }
+    
+    res.json({ success: true, message: 'Profile picture deleted successfully' });
+  });
+});
+
+// ============================================================================
+// SKILLS API ENDPOINTS - Add these to your server.js
+// ============================================================================
+
+// GET user's skills
+app.get('/api/skills/:userId', (req, res) => {
+  const { userId } = req.params;
+  
+  const query = `
+    SELECT skill_id, skill_name, created_at
+    FROM skills 
+    WHERE user_id = ?
+    ORDER BY created_at DESC
+  `;
+  
+  db.all(query, [userId], (err, rows) => {
+    if (err) {
+      console.error('Error fetching skills:', err);
+      return res.status(500).json({ error: 'Failed to fetch skills' });
+    }
+    
+    res.json({ success: true, skills: rows });
+  });
+});
+
+// ADD a new skill
+app.post('/api/skills', (req, res) => {
+  const { userId, skillName } = req.body;
+  
+  if (!userId || !skillName) {
+    return res.status(400).json({ error: 'userId and skillName are required' });
+  }
+  
+  const query = `
+    INSERT INTO skills (user_id, skill_name)
+    VALUES (?, ?)
+  `;
+  
+  db.run(query, [userId, skillName.trim()], function(err) {
+    if (err) {
+      if (err.message.includes('UNIQUE constraint')) {
+        return res.status(400).json({ error: 'Skill already exists' });
+      }
+      console.error('Error adding skill:', err);
+      return res.status(500).json({ error: 'Failed to add skill' });
+    }
+    
+    res.json({ 
+      success: true, 
+      message: 'Skill added successfully',
+      skill: {
+        skill_id: this.lastID,
+        skill_name: skillName.trim()
+      }
+    });
+  });
+});
+
+// DELETE a skill
+app.delete('/api/skills/:skillId', (req, res) => {
+  const { skillId } = req.params;
+  
+  const query = 'DELETE FROM skills WHERE skill_id = ?';
+  
+  db.run(query, [skillId], function(err) {
+    if (err) {
+      console.error('Error deleting skill:', err);
+      return res.status(500).json({ error: 'Failed to delete skill' });
+    }
+    
+    if (this.changes === 0) {
+      return res.status(404).json({ error: 'Skill not found' });
+    }
+    
+    res.json({ success: true, message: 'Skill deleted successfully' });
+  });
+});
+
+// BULK UPDATE skills (optional - for replacing all skills at once)
+app.put('/api/skills/bulk/:userId', (req, res) => {
+  const { userId } = req.params;
+  const { skills } = req.body; // Array of skill names
+  
+  if (!Array.isArray(skills)) {
+    return res.status(400).json({ error: 'skills must be an array' });
+  }
+  
+  // Start transaction
+  db.serialize(() => {
+    // Delete existing skills
+    db.run('DELETE FROM skills WHERE user_id = ?', [userId], (err) => {
+      if (err) {
+        console.error('Error deleting old skills:', err);
+        return res.status(500).json({ error: 'Failed to update skills' });
+      }
+      
+      if (skills.length === 0) {
+        return res.json({ success: true, message: 'All skills removed' });
+      }
+      
+      // Insert new skills
+      const stmt = db.prepare('INSERT INTO skills (user_id, skill_name) VALUES (?, ?)');
+      
+      skills.forEach(skill => {
+        stmt.run([userId, skill.trim()]);
+      });
+      
+      stmt.finalize((err) => {
+        if (err) {
+          console.error('Error inserting skills:', err);
+          return res.status(500).json({ error: 'Failed to update skills' });
+        }
+        
+        res.json({ success: true, message: 'Skills updated successfully' });
+      });
+    });
   });
 });
 

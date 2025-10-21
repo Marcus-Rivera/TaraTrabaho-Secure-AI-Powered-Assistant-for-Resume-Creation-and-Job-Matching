@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import PersonIcon from "@mui/icons-material/Person";
 import EditIcon from "@mui/icons-material/Edit";
 import SaveIcon from "@mui/icons-material/Save";
 import CancelIcon from "@mui/icons-material/Cancel";
-import SkillsSection from "./SkillsSections";
-import { useSessionCheck } from "../useSessionCheck";
-import SessionExpiredModal from "../SessionExpiredModal";
+import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import { Alert } from "@mui/material";
+import SkillsSection from "./SkillsSections";
+import SessionExpiredModal from "../SessionExpiredModal";
+import { useSessionCheck } from "../useSessionCheck";  
 
 const ProfileSection = () => {
   const { userData, loading, sessionError } = useSessionCheck();
@@ -14,6 +15,10 @@ const ProfileSection = () => {
   const [showAlert, setShowAlert] = useState(false);
   const [alertMsg, setAlertMsg] = useState("");
   const [alertType, setAlertType] = useState("success");
+
+  const fileInputRef = useRef(null);
+  const [profileImage, setProfileImage] = useState(null);
+  const [uploading, setUploading] = useState(false);
 
   const [formData, setFormData] = useState({
     firstname: "",
@@ -30,6 +35,24 @@ const ProfileSection = () => {
   });
 
   const [originalData, setOriginalData] = useState({});
+
+  // ✅ Define loadProfilePicture BEFORE useEffect
+  const loadProfilePicture = (userId) => {
+    fetch(`http://localhost:5000/api/profile-picture/${userId}`)
+      .then((res) => {
+        if (res.ok) {
+          return res.blob();
+        }
+        return null;
+      })
+      .then((blob) => {
+        if (blob) {
+          const imageUrl = URL.createObjectURL(blob);
+          setProfileImage(imageUrl);
+        }
+      })
+      .catch((err) => console.error("Error loading profile picture:", err));
+  };
 
   // Load user profile from backend
   useEffect(() => {
@@ -52,12 +75,88 @@ const ProfileSection = () => {
               postgraduate: data.postgraduate || "",
             });
             setOriginalData(data);
+            
+            // ✅ Load profile picture here too
+            if (data.user_id) {
+              loadProfilePicture(data.user_id);
+            }
           }
         })
         .catch((err) => console.error("Error loading profile:", err));
     }
   }, [userData]);
 
+  // Image upload function
+  const handleImageUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      setAlertType("error");
+      setAlertMsg("Please upload an image file");
+      setShowAlert(true);
+      setTimeout(() => setShowAlert(false), 3000);
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setAlertType("error");
+      setAlertMsg("Image size must be less than 5MB");
+      setShowAlert(true);
+      setTimeout(() => setShowAlert(false), 3000);
+      return;
+    }
+
+    setUploading(true);
+
+    // Get user_id from backend
+    try {
+      const userRes = await fetch(`http://localhost:5000/api/profile/${userData.email}`);
+      const userProfile = await userRes.json();
+      
+      if (!userProfile.user_id) {
+        throw new Error("User ID not found");
+      }
+
+      const formDataToSend = new FormData();
+      formDataToSend.append('profilePicture', file);
+      formDataToSend.append('userId', userProfile.user_id);
+
+      const response = await fetch('http://localhost:5000/api/profile-picture/upload', {
+        method: 'POST',
+        body: formDataToSend,
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Update profile picture display
+        const imageUrl = URL.createObjectURL(file);
+        setProfileImage(imageUrl);
+        
+        // ✅ DISPATCH EVENT TO UPDATE SIDEBAR
+        window.dispatchEvent(new CustomEvent('profilePictureUpdated', { 
+          detail: { userId: userProfile.user_id } 
+        }));
+        
+        setAlertType("success");
+        setAlertMsg("Profile picture updated successfully!");
+      } else {
+        setAlertType("error");
+        setAlertMsg("Failed to upload profile picture");
+      }
+    } catch (error) {
+      console.error('Error uploading profile picture:', error);
+      setAlertType("error");
+      setAlertMsg("Error uploading profile picture");
+    } finally {
+      setUploading(false);
+      setShowAlert(true);
+      setTimeout(() => setShowAlert(false), 3000);
+    }
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -113,6 +212,7 @@ const ProfileSection = () => {
     setIsEditing(false);
   };
 
+  // ✅ Loading and error checks AFTER all functions are defined
   if (loading) {
     return (
       <main className="flex items-center justify-center h-screen text-[#272343]">
@@ -149,14 +249,45 @@ const ProfileSection = () => {
       <div className="bg-[rgba(251,218,35,0.39)] rounded-[40px] p-8 flex flex-col md:flex-row gap-8">
         {/* Left Profile Info */}
         <div className="flex flex-col items-center w-full md:w-1/3">
-          <div className="w-40 h-40 rounded-full bg-gray-300 flex items-center justify-center relative group">
-            <PersonIcon className="text-gray-500" style={{ fontSize: 80 }} />
-            {isEditing && (
-              <div className="absolute inset-0 rounded-full bg-black bg-opacity-50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-                <EditIcon className="text-white" style={{ fontSize: 30 }} />
+          {/* ✅ Updated Profile Picture Section */}
+          <div className="relative group">
+            <div className="w-40 h-40 rounded-full bg-gray-300 flex items-center justify-center overflow-hidden border-4 border-white shadow-lg">
+              {profileImage ? (
+                <img 
+                  src={profileImage} 
+                  alt="Profile" 
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <PersonIcon className="text-gray-500" style={{ fontSize: 80 }} />
+              )}
+            </div>
+            
+            {/* Upload Button Overlay */}
+            <div 
+              className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <PhotoCameraIcon sx={{ color: 'white', fontSize: '2.5rem' }} />
+            </div>
+            
+            {/* Upload Indicator */}
+            {uploading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/70 rounded-full">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
               </div>
             )}
+            
+            {/* Hidden File Input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+              className="hidden"
+            />
           </div>
+
           <h2 className="mt-4 text-xl text-[#272343] font-bold">
             {formData.firstname && formData.lastname
               ? `${formData.firstname} ${formData.lastname}`
@@ -165,10 +296,9 @@ const ProfileSection = () => {
           <p className="text-sm text-[#272343] font-semibold">
             {userData?.email || "your.email@example.com"}
           </p>
-          <p className="text-sm text-[#6E090B] font-bold">UI Designer</p>
 
           {/* Skills Section */}
-          <SkillsSection />
+          <SkillsSection userId={userData?.id || userData?.user_id} />
         </div>
 
         {/* Right Form */}

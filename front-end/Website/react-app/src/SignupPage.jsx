@@ -87,6 +87,14 @@ const SignupPage = () => {
   const [termsOpen, setTermsOpen] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Helper function to get max date (16 years ago from today)
+  const getMaxDate = () => {
+    const today = new Date();
+    const maxDate = new Date(today.getFullYear() - 16, today.getMonth(), today.getDate());
+    return maxDate.toISOString().split('T')[0];
+  };
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -95,7 +103,6 @@ const SignupPage = () => {
       [name]: type === "checkbox" ? checked : value,
     }));
     
-    // Clear error when user starts typing
     if (errors[name]) {
       setErrors((prev) => ({ ...prev, [name]: "" }));
     }
@@ -116,6 +123,12 @@ const SignupPage = () => {
         break;
       case "lastname":
         if (!form.lastname.trim()) error = "Lastname is required";
+        break;
+      case "birthday":
+        if (!form.birthday) error = "Birthday is required";
+        else if (new Date(form.birthday) > new Date(getMaxDate())) {
+          error = "You must be at least 16 years old";
+        }
         break;
       case "email":
         if (!form.email.trim()) error = "Email is required";
@@ -144,9 +157,8 @@ const SignupPage = () => {
   };
 
   const validateForm = () => {
-    const fields = ["firstname", "lastname", "email", "username", "password", "confirmPassword", "agree"];
+    const fields = ["firstname", "lastname", "birthday", "email", "username", "password", "confirmPassword", "agree"];
     let isValid = true;
-    const newErrors = {};
 
     fields.forEach((field) => {
       const fieldValid = validateField(field);
@@ -160,41 +172,43 @@ const SignupPage = () => {
   };
 
   const handleSignup = async (e) => {
-  e.preventDefault();
+    e.preventDefault();
 
-  if (validateForm()) {
-    try {
-      const response = await fetch("http://localhost:5000/api/signup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
+    if (validateForm()) {
+      setIsLoading(true);
+      
+      try {
+        const response = await fetch("http://localhost:5000/api/signup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(form),
+        });
 
-      const result = await response.json();
+        const result = await response.json();
 
-      if (result.status === "pending") {
-        setAlertType("success");
-        setAlertMsg("Signup successful! Please verify your email.");
-        setShowAlert(true);
+        if (result.status === "pending") {
+          setAlertType("success");
+          setAlertMsg("Signup successful! Please verify your email.");
+          setShowAlert(true);
 
-        // Redirect to OTP page with email
-        setTimeout(() => {
-          navigate("/otp", { state: { email: result.email } });
-        }, 1500);
-      } else {
+          setTimeout(() => {
+            navigate("/otp", { state: { email: result.email } });
+          }, 1500);
+        } else {
+          setAlertType("error");
+          setAlertMsg(result.message);
+          setShowAlert(true);
+          setIsLoading(false);
+        }
+      } catch (error) {
+        console.error(error);
         setAlertType("error");
-        setAlertMsg(result.message);
+        setAlertMsg("Error connecting to server");
         setShowAlert(true);
+        setIsLoading(false);
       }
-    } catch (error) {
-      console.error(error);
-      setAlertType("error");
-      setAlertMsg("Error connecting to server");
-      setShowAlert(true);
     }
-  }
-};
-
+  };
 
   const getInputClassName = (fieldName, baseClass) => {
     const hasError = touched[fieldName] && errors[fieldName];
@@ -230,7 +244,27 @@ const SignupPage = () => {
 
       {/* Signup Form */}
       <div className="flex w-full lg:w-2/3 items-center justify-center p-5">
-        <div className="w-full max-w-2xl rounded-3xl bg-[#FFE660] p-8 shadow-lg">
+        <div className="w-full max-w-2xl rounded-3xl bg-[#FFE660] p-8 shadow-lg relative">
+          {/* Back Button */}
+          <button
+            onClick={() => navigate('/')}
+            className="absolute top-4 left-4 flex items-center gap-2 text-gray-700 hover:text-gray-900 transition-colors group"
+            type="button"
+            disabled={isLoading}
+          >
+            <svg 
+              xmlns="http://www.w3.org/2000/svg" 
+              fill="none" 
+              viewBox="0 0 24 24" 
+              strokeWidth={2} 
+              stroke="currentColor" 
+              className="w-5 h-5 group-hover:-translate-x-1 transition-transform"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+            </svg>
+            <span className="font-semibold">Back</span>
+          </button>
+
           <h2 className="mb-6 text-center text-3xl font-bold text-gray-800">
             Create Account
           </h2>
@@ -250,6 +284,7 @@ const SignupPage = () => {
                   onBlur={() => handleBlur("firstname")}
                   placeholder="Firstname"
                   className={getInputClassName("firstname", "w-full rounded-md p-2 bg-[#BAE8E8] focus:outline-none focus:ring-2 focus:ring-[#272343]")}
+                  disabled={isLoading}
                 />
               </div>
               <div>
@@ -264,6 +299,7 @@ const SignupPage = () => {
                   onBlur={() => handleBlur("lastname")}
                   placeholder="Lastname"
                   className={getInputClassName("lastname", "w-full rounded-md p-2 bg-[#BAE8E8] focus:outline-none focus:ring-2 focus:ring-[#272343]")}
+                  disabled={isLoading}
                 />
               </div>
             </div>
@@ -271,13 +307,18 @@ const SignupPage = () => {
             {/* Birthday & Gender */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Birthday (Optional)</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">
+                  Birthday {touched.birthday && errors.birthday && <span className="text-red-500 text-xs">* {errors.birthday}</span>}
+                </label>
                 <input
                   type="date"
                   name="birthday"
                   value={form.birthday}
                   onChange={handleChange}
-                  className="w-full rounded-md border border-gray-400 p-2 bg-[#BAE8E8] focus:outline-none focus:ring-2 focus:ring-[#272343]"
+                  onBlur={() => handleBlur("birthday")}
+                  max={getMaxDate()}
+                  className={getInputClassName("birthday", "w-full rounded-md p-2 bg-[#BAE8E8] focus:outline-none focus:ring-2 focus:ring-[#272343]")}
+                  disabled={isLoading}
                 />
               </div>
               <div>
@@ -287,6 +328,7 @@ const SignupPage = () => {
                   value={form.gender}
                   onChange={handleChange}
                   className="w-full rounded-md border border-gray-400 p-2 bg-[#BAE8E8] focus:outline-none focus:ring-2 focus:ring-[#272343]"
+                  disabled={isLoading}
                 >
                   <option>Female</option>
                   <option>Male</option>
@@ -309,6 +351,7 @@ const SignupPage = () => {
                   onBlur={() => handleBlur("username")}
                   placeholder="Username"
                   className={getInputClassName("username", "w-full rounded-md p-2 bg-[#BAE8E8] focus:outline-none focus:ring-2 focus:ring-[#272343]")}
+                  disabled={isLoading}
                 />
               </div>
               <div>
@@ -323,6 +366,7 @@ const SignupPage = () => {
                   onBlur={() => handleBlur("email")}
                   placeholder="Email"
                   className={getInputClassName("email", "w-full rounded-md p-2 bg-[#BAE8E8] focus:outline-none focus:ring-2 focus:ring-[#272343]")}
+                  disabled={isLoading}
                 />
               </div>
             </div>
@@ -337,6 +381,7 @@ const SignupPage = () => {
                 onChange={handleChange}
                 placeholder="Phone number"
                 className="w-full rounded-md border border-gray-400 p-2 bg-[#BAE8E8] focus:outline-none focus:ring-2 focus:ring-[#272343]"
+                disabled={isLoading}
               />
             </div>
 
@@ -354,12 +399,14 @@ const SignupPage = () => {
                   onBlur={() => handleBlur("password")}
                   placeholder="Password (min. 6 characters)"
                   className={getInputClassName("password", "w-full rounded-md p-2 pr-10 bg-[#BAE8E8] focus:outline-none focus:ring-2 focus:ring-[#272343]")}
+                  disabled={isLoading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-800 focus:outline-none"
                   tabIndex="-1"
+                  disabled={isLoading}
                 >
                   {showPassword ? (
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
@@ -389,12 +436,14 @@ const SignupPage = () => {
                   onBlur={() => handleBlur("confirmPassword")}
                   placeholder="Confirm Password"
                   className={getInputClassName("confirmPassword", "w-full rounded-md p-2 pr-10 bg-[#BAE8E8] focus:outline-none focus:ring-2 focus:ring-[#272343]")}
+                  disabled={isLoading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-800 focus:outline-none"
                   tabIndex="-1"
+                  disabled={isLoading}
                 >
                   {showConfirmPassword ? (
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
@@ -420,6 +469,7 @@ const SignupPage = () => {
                   onChange={handleChange}
                   onBlur={() => handleBlur("agree")}
                   className="mt-1 w-4 h-4 cursor-pointer"
+                  disabled={isLoading}
                 />
                 <p>
                   By clicking <span className="font-bold">"Sign Up"</span> I agree
@@ -428,6 +478,7 @@ const SignupPage = () => {
                     type="button"
                     onClick={() => setTermsOpen(true)}
                     className="text-blue-600 underline hover:text-blue-800"
+                    disabled={isLoading}
                   >
                     Terms of Use
                   </button>
@@ -439,15 +490,35 @@ const SignupPage = () => {
             {/* Button */}
             <button
               type="submit"
-              className="w-full rounded-md bg-[#2C275C] py-3 font-semibold text-white hover:bg-[#1b163e] transition-all hover:scale-[1.02] active:scale-[0.98]"
+              disabled={isLoading}
+              className={`w-full rounded-md py-3 font-semibold text-white transition-all ${
+                isLoading 
+                  ? 'bg-gray-400 cursor-not-allowed opacity-70' 
+                  : 'bg-[#2C275C] hover:bg-[#1b163e] hover:scale-[1.02] active:scale-[0.98]'
+              }`}
             >
-              Sign Up
+              {isLoading ? (
+                <div className="flex items-center justify-center">
+                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Processing...
+                </div>
+              ) : (
+                'Sign Up'
+              )}
             </button>
 
             {/* Login link */}
             <p className="mt-4 text-center text-sm text-gray-700">
               Already have an Account?{" "}
-              <a href="/login" className="text-blue-600 underline hover:text-blue-800 font-semibold">
+              <a 
+                href="/login" 
+                className={`text-blue-600 underline hover:text-blue-800 font-semibold ${
+                  isLoading ? 'pointer-events-none opacity-50' : ''
+                }`}
+              >
                 Login
               </a>
             </p>

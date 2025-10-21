@@ -6,6 +6,9 @@ import CloseIcon from "@mui/icons-material/Close";
 import { Link, useLocation, useNavigate, Outlet } from "react-router-dom";
 import SessionExpiredModal from "../SessionExpiredModal";
 import { useSessionCheck } from "../useSessionCheck";
+import { useRef } from "react";
+import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
+import PersonIcon from "@mui/icons-material/Person";
 
 const SidebarContent = ({ onClose, isMobile }) => {
   const location = useLocation();
@@ -14,19 +17,29 @@ const SidebarContent = ({ onClose, isMobile }) => {
   
   const [userData, setUserData] = useState(null);
 
-  // ✅ Load user info from token and fetch full data
+  const fileInputRef = useRef(null);
+  const [profileImage, setProfileImage] = useState(null);
+  const [uploading, setUploading] = useState(false);
+
+  // Load user info from token and fetch full data with pfp
   useEffect(() => {
     const token = sessionStorage.getItem("token");
     if (!token) return;
 
     try {
-      const decoded = JSON.parse(atob(token.split(".")[1])); // decode JWT payload
+      const decoded = JSON.parse(atob(token.split(".")[1]));
       const email = decoded.email;
       if (email) {
         fetch(`http://localhost:5000/api/profile/${email}`)
           .then((res) => res.json())
           .then((data) => {
-            if (data) setUserData(data);
+            if (data) {
+              setUserData(data);
+              // Load profile picture
+              if (data.user_id) {
+                loadProfilePicture(data.user_id);
+              }
+            }
           })
           .catch((err) => console.error("Error loading profile:", err));
       }
@@ -35,22 +48,101 @@ const SidebarContent = ({ onClose, isMobile }) => {
     }
   }, []);
 
+
   useEffect(() => {
     const storedUser = sessionStorage.getItem("userData");
     if (storedUser) {
       setUserData(JSON.parse(storedUser));
     }
 
-    // ✅ Listen for updates
+    // ✅ Listen for user data updates
     const handleUserUpdate = () => {
       const updated = sessionStorage.getItem("userData");
       if (updated) setUserData(JSON.parse(updated));
     };
 
+    // ✅ Listen for profile picture updates
+    const handleProfilePictureUpdate = (event) => {
+      const userId = event.detail?.userId || userData?.user_id;
+      if (userId) {
+        console.log('🔄 Reloading profile picture in sidebar...');
+        loadProfilePicture(userId);
+      }
+    };
+
     window.addEventListener("userDataUpdated", handleUserUpdate);
-    return () => window.removeEventListener("userDataUpdated", handleUserUpdate);
-  }, []);
-  
+    window.addEventListener("profilePictureUpdated", handleProfilePictureUpdate);
+    
+    return () => {
+      window.removeEventListener("userDataUpdated", handleUserUpdate);
+      window.removeEventListener("profilePictureUpdated", handleProfilePictureUpdate);
+    };
+  }, [userData?.user_id]); // Add dependency to re-attach listener when user changes
+
+  // load profile picture
+  const loadProfilePicture = (userId) => {
+  fetch(`http://localhost:5000/api/profile-picture/${userId}`)
+    .then((res) => {
+      if (res.ok) {
+        return res.blob();
+      }
+      return null;
+    })
+    .then((blob) => {
+      if (blob) {
+        const imageUrl = URL.createObjectURL(blob);
+        setProfileImage(imageUrl);
+      }
+    })
+    .catch((err) => console.error("Error loading profile picture:", err));
+  };
+
+  // Image upload function
+  const handleImageUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please upload an image file');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image size must be less than 5MB');
+      return;
+    }
+
+    setUploading(true);
+
+    const formData = new FormData();
+    formData.append('profilePicture', file);
+    formData.append('userId', userData.user_id);
+
+    try {
+      const response = await fetch('http://localhost:5000/api/profile-picture/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Update profile picture display
+        const imageUrl = URL.createObjectURL(file);
+        setProfileImage(imageUrl);
+      } else {
+        alert('Failed to upload profile picture');
+      }
+    } catch (error) {
+      console.error('Error uploading profile picture:', error);
+      alert('Error uploading profile picture');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   // Determine active item based on current route
   const getActive = () => {
     const path = location.pathname;
@@ -130,9 +222,9 @@ const SidebarContent = ({ onClose, isMobile }) => {
 
       {/* Profile */}
       <div className="flex flex-col items-center px-4 pb-6">
-        <div className="relative">
+        <div className="relative group">
           <Avatar
-            src="https://images.unsplash.com/photo-1531427186611-ecfd6d936c79?auto=format&fit=crop&w=634&q=80"
+            src={profileImage}
             alt="User avatar"
             sx={{ 
               width: 100, 
@@ -141,25 +233,57 @@ const SidebarContent = ({ onClose, isMobile }) => {
               boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
             }}
           />
-          <div className="absolute bottom-1 right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-white"></div>
-        </div>
-        <h4 className="mt-3 text-lg font-bold text-[#272343]">
-          {userData
-            ? `${userData.firstname || ""} ${userData.lastname || ""}`
-            : "Your Name"}
-        </h4>
-        <Chip 
-          label="Premium Member" 
-          size="small" 
-          className="mt-2"
-          sx={{ 
-            backgroundColor: '#272343',
-            color: '#FBDA23',
-            fontWeight: 'bold',
-            fontSize: '0.7rem'
-          }}
-        />
-      </div>
+
+          {!profileImage && (
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-300 rounded-full">
+              <PersonIcon style={{ fontSize: '3.5rem', color: '#9CA3AF' }} />
+            </div>
+          )}
+          
+          {/* Upload Button Overlay */}
+          {/* <div 
+            className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <PhotoCameraIcon sx={{ color: 'white', fontSize: '2rem' }} />
+          </div> */}
+          
+          {/* Upload Indicator */}
+          {uploading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/70 rounded-full">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+            </div>
+          )}
+    
+    {/* Hidden File Input */}
+    <input
+      ref={fileInputRef}
+      type="file"
+      accept="image/*"
+      onChange={handleImageUpload}
+      className="hidden"
+    />
+    
+    <div className="absolute bottom-1 right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-white"></div>
+  </div>
+  
+  <h4 className="mt-3 text-lg font-bold text-[#272343]">
+    {userData
+      ? `${userData.firstname || ""} ${userData.lastname || ""}`
+      : "Your Name"}
+  </h4>
+  <Chip 
+    label="Premium Member" 
+    size="small" 
+    className="mt-2"
+    sx={{ 
+      backgroundColor: '#272343',
+      color: '#FBDA23',
+      fontWeight: 'bold',
+      fontSize: '0.7rem'
+    }}
+  />
+</div>
 
       {/* Navigation */}
       <div className="flex flex-col justify-between flex-1 px-4 pb-6 overflow-y-auto">

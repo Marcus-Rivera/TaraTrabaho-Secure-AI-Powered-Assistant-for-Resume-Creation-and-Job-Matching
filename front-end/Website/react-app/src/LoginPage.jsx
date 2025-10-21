@@ -10,20 +10,25 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState({});
   const [alertMessage, setAlertMessage] = useState("");
-  const [alertSeverity, setAlertSeverity] = useState("error"); // For MUI Alert
-  const [submitted, setSubmitted] = useState(false); // Track if form was submitted
+  const [alertSeverity, setAlertSeverity] = useState("error");
+  const [submitted, setSubmitted] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [isSuspended, setIsSuspended] = useState(false);
   const navigate = useNavigate();
 
-  // Auto-hide alert after 5 seconds
+
+
+  // Auto-hide alert after duration (longer for suspension messages)
   useEffect(() => {
     if (alertMessage) {
+      const duration = isSuspended ? 10000 : 5000;
       const timer = setTimeout(() => {
         setAlertMessage("");
-      }, 5000);
+        setIsSuspended(false);
+      }, duration);
       return () => clearTimeout(timer);
     }
-  }, [alertMessage]);
+  }, [alertMessage, isSuspended]);
 
   const validateField = (fieldName, value) => {
     let fieldErrors = {};
@@ -45,7 +50,6 @@ export default function LoginPage() {
       }
     }
 
-    // Merge with existing errors (for other fields, if any)
     setErrors((prevErrors) => ({ ...prevErrors, ...fieldErrors }));
     return Object.keys(fieldErrors).length === 0;
   };
@@ -60,14 +64,12 @@ export default function LoginPage() {
     const { name, value } = e.target;
     if (name === "email") {
       setEmail(value);
-      // Clear email error on typing after submission
       if (submitted && errors.email) {
         setErrors((prev) => ({ ...prev, email: "" }));
       }
     }
     if (name === "password") {
       setPassword(value);
-      // Clear password error on typing after submission
       if (submitted && errors.password) {
         setErrors((prev) => ({ ...prev, password: "" }));
       }
@@ -77,16 +79,15 @@ export default function LoginPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Mark as submitted and run full validation
     setSubmitted(true);
 
     if (!validateForm()) {
       setAlertMessage("Please fix the errors below");
       setAlertSeverity("error");
+      setIsSuspended(false);
       return;
     }
 
-    // Clear any previous alerts
     setAlertMessage("");
 
     try {
@@ -98,13 +99,22 @@ export default function LoginPage() {
 
       const data = await response.json();
 
+      if (data.status === "suspended") {
+        setAlertMessage(data.message);
+        setAlertSeverity("warning");
+        setIsSuspended(true);
+        setErrors({});
+        return;
+      }
+
       if (response.ok && data.success) {
-        // Success: Clear form, errors, and submitted state
         sessionStorage.setItem("token", data.token);
         setEmail("");
         setPassword("");
         setErrors({});
         setSubmitted(false);
+        setIsSuspended(false);
+        
         const role = data.user.role;
         if (role === "admin") {
           navigate("/admin");
@@ -112,11 +122,10 @@ export default function LoginPage() {
           navigate("/taratrabaho");
         }
       } else {
-        // Server error: Use specific message if available (e.g., for invalid password)
         const errorMsg = data.message || "Invalid email or password";
         setAlertMessage(errorMsg);
         setAlertSeverity("error");
-        // Highlight fields on server error (assume email/password invalid)
+        setIsSuspended(false);
         setErrors({ email: "Invalid credentials", password: "Invalid credentials" });
       }
 
@@ -124,6 +133,7 @@ export default function LoginPage() {
       console.error("Login error:", error);
       setAlertMessage("Server error. Try again later.");
       setAlertSeverity("error");
+      setIsSuspended(false);
     }
   };
 
@@ -132,17 +142,46 @@ export default function LoginPage() {
       className="flex flex-col-reverse lg:flex-row bg-cover min-h-screen lg:items-center pt-12 pb-35 lg:pt-10 lg:pb-10"
       style={{ backgroundImage: `url(${bg})` }}
     >
-      {/* Alert if login fails */}
+      {/* Alert if login fails or account suspended */}
       {alertMessage && (
-        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-lg">
-          <Alert severity={alertSeverity} onClose={() => setAlertMessage("")}>
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-lg px-4">
+          <Alert 
+            severity={alertSeverity} 
+            onClose={() => {
+              setAlertMessage("");
+              setIsSuspended(false);
+            }}
+            sx={isSuspended ? { 
+              fontSize: '0.95rem',
+              '& .MuiAlert-message': { width: '100%' }
+            } : {}}
+          >
             {alertMessage}
           </Alert>
         </div>
       )}
 
       <div className="flex w-full lg:w-2/3 items-center justify-center p-7">
-        <div className="w-full max-w-md rounded-4xl bg-[#FFE660] p-8 shadow-lg">
+        <div className="w-full max-w-md rounded-4xl bg-[#FFE660] p-8 shadow-lg relative">
+          {/* Back Button */}
+          <button
+            onClick={() => navigate('/')}
+            className="absolute top-4 left-4 flex items-center gap-2 text-gray-700 hover:text-gray-900 transition-colors group"
+            type="button"
+          >
+            <svg 
+              xmlns="http://www.w3.org/2000/svg" 
+              fill="none" 
+              viewBox="0 0 24 24" 
+              strokeWidth={2} 
+              stroke="currentColor" 
+              className="w-5 h-5 group-hover:-translate-x-1 transition-transform"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+            </svg>
+            <span className="font-semibold">Back</span>
+          </button>
+
           <h2 className="mb-6 text-center text-4xl font-bold text-gray-800">Login</h2>
 
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -204,7 +243,7 @@ export default function LoginPage() {
                 aria-describedby={submitted && errors.password ? "password-error" : undefined}
               />
 
-              {/* Eye toggle button (inside relative container) */}
+              {/* Eye toggle button */}
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
@@ -212,7 +251,6 @@ export default function LoginPage() {
                 tabIndex="-1"
               >
                 {showPassword ? (
-                  // Eye Off icon
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     fill="none"
@@ -228,7 +266,6 @@ export default function LoginPage() {
                     />
                   </svg>
                 ) : (
-                  // Eye Open icon
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     fill="none"
@@ -259,7 +296,6 @@ export default function LoginPage() {
               )}
             </div>
 
-
             {/* Submit */}
             <button
               type="submit"
@@ -272,7 +308,7 @@ export default function LoginPage() {
           {/* Extra Links */}
           <p className="mt-6 mb-1 text-center text-sm">
             <a href="/Signup" className="text-[#272343] font-bold underline hover:underline">
-              Don’t have an account? Sign up
+              Don't have an account? Sign up
             </a>
           </p>
           <p className="text-center text-sm">
