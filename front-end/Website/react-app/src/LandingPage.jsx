@@ -3,6 +3,7 @@ import bg from './assets/BG.png';
 import { FaBars, FaTimes, FaFacebookF, FaInstagram, FaSignInAlt } from "react-icons/fa";
 import PersonAddAltIcon from '@mui/icons-material/PersonAddAlt';
 
+
 const ContactModal = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 

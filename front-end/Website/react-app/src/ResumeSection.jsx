@@ -7,6 +7,7 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import CloseIcon from "@mui/icons-material/Close";
 import { useSessionCheck } from "../useSessionCheck";
 import SessionExpiredModal from "../SessionExpiredModal";
+import { Alert } from "@mui/material";
 
 const ResumeSection = () => {
   const { userData, loading, sessionError } = useSessionCheck();
@@ -17,7 +18,10 @@ const ResumeSection = () => {
   const [error, setError] = useState("");
   const [previewResume, setPreviewResume] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(null); // { resumeId, filename }
 
+  const [showSuccessAlert, setShowSuccessAlert] = useState(false);
+  const [successMsg, setSuccessMsg] = useState("");
   // Fetch resumes from database
   useEffect(() => {
     const fetchResumes = async () => {
@@ -117,13 +121,10 @@ const ResumeSection = () => {
     }
   };
 
-  const handleDelete = async (resumeId) => {
-    if (!window.confirm("Are you sure you want to delete this resume?")) {
-      return;
-    }
-
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
     try {
-      const response = await fetch(`http://localhost:5000/api/resume/${resumeId}`, {
+      const response = await fetch(`http://localhost:5000/api/resume/${deleteConfirm.resumeId}`, {
         method: 'DELETE',
       });
 
@@ -131,15 +132,21 @@ const ResumeSection = () => {
 
       if (response.ok) {
         // Remove deleted resume from state
-        setResumes(resumes.filter(resume => resume.resume_id !== resumeId));
+        setResumes(resumes.filter(resume => resume.resume_id !== deleteConfirm.resumeId));
         setOpenMenu(null);
-        alert("Resume deleted successfully");
+        setDeleteConfirm(null);
+        
+        // Show success alert
+        setSuccessMsg("Resume deleted successfully!");
+        setShowSuccessAlert(true);
+        setTimeout(() => setShowSuccessAlert(false), 3000);
       } else {
         throw new Error(data.error || "Failed to delete resume");
       }
     } catch (err) {
       console.error("Error deleting resume:", err);
-      alert("Failed to delete resume");
+      setError("Failed to delete resume");
+      setDeleteConfirm(null);
     }
   };
 
@@ -167,8 +174,16 @@ const ResumeSection = () => {
   // User not logged in
   if (!userData) return null;
 
+  
+
   return (
     <div className="flex-1 p-5 pt-10">
+      {/* Success Alert */}
+      {showSuccessAlert && (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50">
+          <Alert severity="success">{successMsg}</Alert>
+        </div>
+      )}
       {/* Header */}
       <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mb-6">
         <div>
@@ -243,7 +258,13 @@ const ResumeSection = () => {
                       Download
                     </button>
                     <button 
-                      onClick={() => handleDelete(resume.resume_id)}
+                      onClick={() => {
+                        setDeleteConfirm({ 
+                          resumeId: resume.resume_id, 
+                          filename: resume.filename 
+                        });
+                        setOpenMenu(null);
+                      }}
                       className="block w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-gray-100 cursor-pointer"
                     >
                       Delete
@@ -314,6 +335,63 @@ const ResumeSection = () => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-lg">
             <p className="text-gray-700">Loading preview...</p>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-opacity-50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-lg max-w-md w-full p-6 shadow-xl">
+            {/* Warning Icon */}
+            <div className="flex items-center justify-center w-12 h-12 mx-auto mb-4 bg-red-100 rounded-full">
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                className="w-6 h-6 text-red-600" 
+                fill="none" 
+                viewBox="0 0 24 24" 
+                stroke="currentColor"
+              >
+                <path 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                  strokeWidth={2} 
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" 
+                />
+              </svg>
+            </div>
+
+            {/* Title */}
+            <h3 className="text-xl font-bold text-center text-gray-900 mb-2">
+              Delete Resume?
+            </h3>
+
+            {/* Message */}
+            <p className="text-center text-gray-600 mb-2">
+              Are you sure you want to delete
+            </p>
+            <p className="text-center font-semibold text-gray-900 mb-4 break-words px-2">
+              "{deleteConfirm.filename}"
+            </p>
+            <p className="text-center text-sm text-red-600 mb-6">
+              This action cannot be undone.
+            </p>
+
+            {/* Buttons */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="flex-1 px-4 py-2.5 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-semibold"
+              >
+                Delete
+              </button>
+            </div>
           </div>
         </div>
       )}

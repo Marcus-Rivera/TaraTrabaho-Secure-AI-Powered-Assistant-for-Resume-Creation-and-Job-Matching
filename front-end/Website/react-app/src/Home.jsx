@@ -8,6 +8,7 @@ import SessionExpiredModal from "../SessionExpiredModal";
 import { useSessionCheck } from "../useSessionCheck";
 import { useRef } from "react";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
+import PersonIcon from "@mui/icons-material/Person";
 
 const SidebarContent = ({ onClose, isMobile }) => {
   const location = useLocation();
@@ -223,7 +224,7 @@ const SidebarContent = ({ onClose, isMobile }) => {
       <div className="flex flex-col items-center px-4 pb-6">
         <div className="relative group">
           <Avatar
-            src={profileImage || "https://images.unsplash.com/photo-1531427186611-ecfd6d936c79?auto=format&fit=crop&w=634&q=80"}
+            src={profileImage}
             alt="User avatar"
             sx={{ 
               width: 100, 
@@ -232,14 +233,20 @@ const SidebarContent = ({ onClose, isMobile }) => {
               boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
             }}
           />
+
+          {!profileImage && (
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-300 rounded-full">
+              <PersonIcon style={{ fontSize: '3.5rem', color: '#9CA3AF' }} />
+            </div>
+          )}
           
           {/* Upload Button Overlay */}
-          <div 
+          {/* <div 
             className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
             onClick={() => fileInputRef.current?.click()}
           >
             <PhotoCameraIcon sx={{ color: 'white', fontSize: '2rem' }} />
-          </div>
+          </div> */}
           
           {/* Upload Indicator */}
           {uploading && (

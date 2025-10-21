@@ -87,7 +87,14 @@ const SignupPage = () => {
   const [termsOpen, setTermsOpen] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false); // Add loading state
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Helper function to get max date (16 years ago from today)
+  const getMaxDate = () => {
+    const today = new Date();
+    const maxDate = new Date(today.getFullYear() - 16, today.getMonth(), today.getDate());
+    return maxDate.toISOString().split('T')[0];
+  };
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -96,7 +103,6 @@ const SignupPage = () => {
       [name]: type === "checkbox" ? checked : value,
     }));
     
-    // Clear error when user starts typing
     if (errors[name]) {
       setErrors((prev) => ({ ...prev, [name]: "" }));
     }
@@ -117,6 +123,12 @@ const SignupPage = () => {
         break;
       case "lastname":
         if (!form.lastname.trim()) error = "Lastname is required";
+        break;
+      case "birthday":
+        if (!form.birthday) error = "Birthday is required";
+        else if (new Date(form.birthday) > new Date(getMaxDate())) {
+          error = "You must be at least 16 years old";
+        }
         break;
       case "email":
         if (!form.email.trim()) error = "Email is required";
@@ -145,9 +157,8 @@ const SignupPage = () => {
   };
 
   const validateForm = () => {
-    const fields = ["firstname", "lastname", "email", "username", "password", "confirmPassword", "agree"];
+    const fields = ["firstname", "lastname", "birthday", "email", "username", "password", "confirmPassword", "agree"];
     let isValid = true;
-    const newErrors = {};
 
     fields.forEach((field) => {
       const fieldValid = validateField(field);
@@ -164,7 +175,7 @@ const SignupPage = () => {
     e.preventDefault();
 
     if (validateForm()) {
-      setIsLoading(true); // Disable button when loading starts
+      setIsLoading(true);
       
       try {
         const response = await fetch("http://localhost:5000/api/signup", {
@@ -180,7 +191,6 @@ const SignupPage = () => {
           setAlertMsg("Signup successful! Please verify your email.");
           setShowAlert(true);
 
-          // Redirect to OTP page with email
           setTimeout(() => {
             navigate("/otp", { state: { email: result.email } });
           }, 1500);
@@ -188,14 +198,14 @@ const SignupPage = () => {
           setAlertType("error");
           setAlertMsg(result.message);
           setShowAlert(true);
-          setIsLoading(false); // Re-enable button on error
+          setIsLoading(false);
         }
       } catch (error) {
         console.error(error);
         setAlertType("error");
         setAlertMsg("Error connecting to server");
         setShowAlert(true);
-        setIsLoading(false); // Re-enable button on error
+        setIsLoading(false);
       }
     }
   };
@@ -234,7 +244,27 @@ const SignupPage = () => {
 
       {/* Signup Form */}
       <div className="flex w-full lg:w-2/3 items-center justify-center p-5">
-        <div className="w-full max-w-2xl rounded-3xl bg-[#FFE660] p-8 shadow-lg">
+        <div className="w-full max-w-2xl rounded-3xl bg-[#FFE660] p-8 shadow-lg relative">
+          {/* Back Button */}
+          <button
+            onClick={() => navigate('/')}
+            className="absolute top-4 left-4 flex items-center gap-2 text-gray-700 hover:text-gray-900 transition-colors group"
+            type="button"
+            disabled={isLoading}
+          >
+            <svg 
+              xmlns="http://www.w3.org/2000/svg" 
+              fill="none" 
+              viewBox="0 0 24 24" 
+              strokeWidth={2} 
+              stroke="currentColor" 
+              className="w-5 h-5 group-hover:-translate-x-1 transition-transform"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+            </svg>
+            <span className="font-semibold">Back</span>
+          </button>
+
           <h2 className="mb-6 text-center text-3xl font-bold text-gray-800">
             Create Account
           </h2>
@@ -254,7 +284,7 @@ const SignupPage = () => {
                   onBlur={() => handleBlur("firstname")}
                   placeholder="Firstname"
                   className={getInputClassName("firstname", "w-full rounded-md p-2 bg-[#BAE8E8] focus:outline-none focus:ring-2 focus:ring-[#272343]")}
-                  disabled={isLoading} // Disable inputs when loading
+                  disabled={isLoading}
                 />
               </div>
               <div>
@@ -269,7 +299,7 @@ const SignupPage = () => {
                   onBlur={() => handleBlur("lastname")}
                   placeholder="Lastname"
                   className={getInputClassName("lastname", "w-full rounded-md p-2 bg-[#BAE8E8] focus:outline-none focus:ring-2 focus:ring-[#272343]")}
-                  disabled={isLoading} // Disable inputs when loading
+                  disabled={isLoading}
                 />
               </div>
             </div>
@@ -277,14 +307,18 @@ const SignupPage = () => {
             {/* Birthday & Gender */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Birthday (Optional)</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">
+                  Birthday {touched.birthday && errors.birthday && <span className="text-red-500 text-xs">* {errors.birthday}</span>}
+                </label>
                 <input
                   type="date"
                   name="birthday"
                   value={form.birthday}
                   onChange={handleChange}
-                  className="w-full rounded-md border border-gray-400 p-2 bg-[#BAE8E8] focus:outline-none focus:ring-2 focus:ring-[#272343]"
-                  disabled={isLoading} // Disable inputs when loading
+                  onBlur={() => handleBlur("birthday")}
+                  max={getMaxDate()}
+                  className={getInputClassName("birthday", "w-full rounded-md p-2 bg-[#BAE8E8] focus:outline-none focus:ring-2 focus:ring-[#272343]")}
+                  disabled={isLoading}
                 />
               </div>
               <div>
@@ -294,7 +328,7 @@ const SignupPage = () => {
                   value={form.gender}
                   onChange={handleChange}
                   className="w-full rounded-md border border-gray-400 p-2 bg-[#BAE8E8] focus:outline-none focus:ring-2 focus:ring-[#272343]"
-                  disabled={isLoading} // Disable inputs when loading
+                  disabled={isLoading}
                 >
                   <option>Female</option>
                   <option>Male</option>
@@ -317,7 +351,7 @@ const SignupPage = () => {
                   onBlur={() => handleBlur("username")}
                   placeholder="Username"
                   className={getInputClassName("username", "w-full rounded-md p-2 bg-[#BAE8E8] focus:outline-none focus:ring-2 focus:ring-[#272343]")}
-                  disabled={isLoading} // Disable inputs when loading
+                  disabled={isLoading}
                 />
               </div>
               <div>
@@ -332,7 +366,7 @@ const SignupPage = () => {
                   onBlur={() => handleBlur("email")}
                   placeholder="Email"
                   className={getInputClassName("email", "w-full rounded-md p-2 bg-[#BAE8E8] focus:outline-none focus:ring-2 focus:ring-[#272343]")}
-                  disabled={isLoading} // Disable inputs when loading
+                  disabled={isLoading}
                 />
               </div>
             </div>
@@ -347,7 +381,7 @@ const SignupPage = () => {
                 onChange={handleChange}
                 placeholder="Phone number"
                 className="w-full rounded-md border border-gray-400 p-2 bg-[#BAE8E8] focus:outline-none focus:ring-2 focus:ring-[#272343]"
-                disabled={isLoading} // Disable inputs when loading
+                disabled={isLoading}
               />
             </div>
 
@@ -365,14 +399,14 @@ const SignupPage = () => {
                   onBlur={() => handleBlur("password")}
                   placeholder="Password (min. 6 characters)"
                   className={getInputClassName("password", "w-full rounded-md p-2 pr-10 bg-[#BAE8E8] focus:outline-none focus:ring-2 focus:ring-[#272343]")}
-                  disabled={isLoading} // Disable inputs when loading
+                  disabled={isLoading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-800 focus:outline-none"
                   tabIndex="-1"
-                  disabled={isLoading} // Disable password toggle when loading
+                  disabled={isLoading}
                 >
                   {showPassword ? (
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
@@ -402,14 +436,14 @@ const SignupPage = () => {
                   onBlur={() => handleBlur("confirmPassword")}
                   placeholder="Confirm Password"
                   className={getInputClassName("confirmPassword", "w-full rounded-md p-2 pr-10 bg-[#BAE8E8] focus:outline-none focus:ring-2 focus:ring-[#272343]")}
-                  disabled={isLoading} // Disable inputs when loading
+                  disabled={isLoading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-800 focus:outline-none"
                   tabIndex="-1"
-                  disabled={isLoading} // Disable password toggle when loading
+                  disabled={isLoading}
                 >
                   {showConfirmPassword ? (
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
@@ -435,7 +469,7 @@ const SignupPage = () => {
                   onChange={handleChange}
                   onBlur={() => handleBlur("agree")}
                   className="mt-1 w-4 h-4 cursor-pointer"
-                  disabled={isLoading} // Disable checkbox when loading
+                  disabled={isLoading}
                 />
                 <p>
                   By clicking <span className="font-bold">"Sign Up"</span> I agree
@@ -444,7 +478,7 @@ const SignupPage = () => {
                     type="button"
                     onClick={() => setTermsOpen(true)}
                     className="text-blue-600 underline hover:text-blue-800"
-                    disabled={isLoading} // Disable terms button when loading
+                    disabled={isLoading}
                   >
                     Terms of Use
                   </button>
@@ -453,7 +487,7 @@ const SignupPage = () => {
               </div>
             </div>
 
-            {/* Button - Now with loading state */}
+            {/* Button */}
             <button
               type="submit"
               disabled={isLoading}

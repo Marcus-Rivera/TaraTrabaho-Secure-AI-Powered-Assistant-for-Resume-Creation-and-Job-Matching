@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import { useSessionCheck } from "../useSessionCheck";
 import SessionExpiredModal from "../SessionExpiredModal";
+import { Alert } from "@mui/material";
 
 const CareerBotSection = () => {
   const [messages, setMessages] = useState([
@@ -32,7 +33,8 @@ const CareerBotSection = () => {
 
   const { userData, loading, sessionError } = useSessionCheck();
 
-
+  const [showSuccessAlert, setShowSuccessAlert] = useState(false);
+  const [successMsg, setSuccessMsg] = useState("");
 
   const [resumeData, setResumeData] = useState({
     personalInfo: {
@@ -861,6 +863,10 @@ const CareerBotSection = () => {
       await saveResumeToDatabase(pdfBlob, filename);
       setShowSaveDialog(false);
       setSaveFileName("");
+
+      setSuccessMsg("Resume saved successfully! You can view it in the Resume section.");
+      setShowSuccessAlert(true);
+      setTimeout(() => setShowSuccessAlert(false), 3000);
     } catch (err) {
       setError("Failed to save resume. Please try again.");
       console.error("Save Error:", err);
@@ -1206,6 +1212,12 @@ const loadLastChatFromDatabase = async () => {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden pt-5 bg-white">
+      {/* Success Alert */}
+      {showSuccessAlert && (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50">
+          <Alert severity="success">{successMsg}</Alert>
+        </div>
+      )}
       {/* Chat History Button */}
       <div className="px-6 pb-3 flex justify-between items-center border-b">
         <h2 className="text-lg font-bold text-gray-900 pl-5 md:pl-4">Resume Builder</h2>
@@ -1317,7 +1329,7 @@ const loadLastChatFromDatabase = async () => {
           {/* New Resume Button */}
           <button
             onClick={() => setShowNewResumeDialog(true)}
-            className="w-full bg-purple-600 text-white py-2 px-3 rounded-md flex items-center justify-center gap-1.5 hover:bg-purple-700 transition-all text-xs font-medium"
+            className="w-full bg-[#272343] text-white py-2 px-3 rounded-md flex items-center justify-center gap-1.5 hover:bg-[#1c1930] transition-all text-xs font-medium"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />

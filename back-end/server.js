@@ -101,11 +101,11 @@ app.post("/api/login", async (req, res) => {
       });
     }
 
-    // ✅ CHECK IF USER ACCOUNT IS SUSPENDED
+    // CHECK IF USER ACCOUNT IS SUSPENDED
     if (user.status === 'suspended') {
       return res.status(403).json({ 
         status: "suspended", 
-        message: "Your account has been suspended. Please contact support at support@taratrabaho.com or call +63 123 456 7890 for assistance." 
+        message: "Your account has been suspended. Please contact support at taratrabaho@gmail.com for assistance." 
       });
     }
 

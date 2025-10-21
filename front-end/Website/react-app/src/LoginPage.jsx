@@ -13,13 +13,15 @@ export default function LoginPage() {
   const [alertSeverity, setAlertSeverity] = useState("error");
   const [submitted, setSubmitted] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [isSuspended, setIsSuspended] = useState(false); // NEW: Track suspension state
+  const [isSuspended, setIsSuspended] = useState(false);
   const navigate = useNavigate();
+
+
 
   // Auto-hide alert after duration (longer for suspension messages)
   useEffect(() => {
     if (alertMessage) {
-      const duration = isSuspended ? 10000 : 5000; // 10s for suspension, 5s for others
+      const duration = isSuspended ? 10000 : 5000;
       const timer = setTimeout(() => {
         setAlertMessage("");
         setIsSuspended(false);
@@ -48,7 +50,6 @@ export default function LoginPage() {
       }
     }
 
-    // Merge with existing errors (for other fields, if any)
     setErrors((prevErrors) => ({ ...prevErrors, ...fieldErrors }));
     return Object.keys(fieldErrors).length === 0;
   };
@@ -63,14 +64,12 @@ export default function LoginPage() {
     const { name, value } = e.target;
     if (name === "email") {
       setEmail(value);
-      // Clear email error on typing after submission
       if (submitted && errors.email) {
         setErrors((prev) => ({ ...prev, email: "" }));
       }
     }
     if (name === "password") {
       setPassword(value);
-      // Clear password error on typing after submission
       if (submitted && errors.password) {
         setErrors((prev) => ({ ...prev, password: "" }));
       }
@@ -80,7 +79,6 @@ export default function LoginPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Mark as submitted and run full validation
     setSubmitted(true);
 
     if (!validateForm()) {
@@ -90,7 +88,6 @@ export default function LoginPage() {
       return;
     }
 
-    // Clear any previous alerts
     setAlertMessage("");
 
     try {
@@ -102,17 +99,15 @@ export default function LoginPage() {
 
       const data = await response.json();
 
-      // ✅ NEW: Check if account is suspended
       if (data.status === "suspended") {
         setAlertMessage(data.message);
-        setAlertSeverity("warning"); // Orange warning color
+        setAlertSeverity("warning");
         setIsSuspended(true);
-        setErrors({}); // Clear field errors
+        setErrors({});
         return;
       }
 
       if (response.ok && data.success) {
-        // Success: Clear form, errors, and submitted state
         sessionStorage.setItem("token", data.token);
         setEmail("");
         setPassword("");
@@ -127,12 +122,10 @@ export default function LoginPage() {
           navigate("/taratrabaho");
         }
       } else {
-        // Server error: Use specific message if available (e.g., for invalid password)
         const errorMsg = data.message || "Invalid email or password";
         setAlertMessage(errorMsg);
         setAlertSeverity("error");
         setIsSuspended(false);
-        // Highlight fields on server error (assume email/password invalid)
         setErrors({ email: "Invalid credentials", password: "Invalid credentials" });
       }
 
@@ -169,7 +162,26 @@ export default function LoginPage() {
       )}
 
       <div className="flex w-full lg:w-2/3 items-center justify-center p-7">
-        <div className="w-full max-w-md rounded-4xl bg-[#FFE660] p-8 shadow-lg">
+        <div className="w-full max-w-md rounded-4xl bg-[#FFE660] p-8 shadow-lg relative">
+          {/* Back Button */}
+          <button
+            onClick={() => navigate('/')}
+            className="absolute top-4 left-4 flex items-center gap-2 text-gray-700 hover:text-gray-900 transition-colors group"
+            type="button"
+          >
+            <svg 
+              xmlns="http://www.w3.org/2000/svg" 
+              fill="none" 
+              viewBox="0 0 24 24" 
+              strokeWidth={2} 
+              stroke="currentColor" 
+              className="w-5 h-5 group-hover:-translate-x-1 transition-transform"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+            </svg>
+            <span className="font-semibold">Back</span>
+          </button>
+
           <h2 className="mb-6 text-center text-4xl font-bold text-gray-800">Login</h2>
 
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -231,7 +243,7 @@ export default function LoginPage() {
                 aria-describedby={submitted && errors.password ? "password-error" : undefined}
               />
 
-              {/* Eye toggle button (inside relative container) */}
+              {/* Eye toggle button */}
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
@@ -239,7 +251,6 @@ export default function LoginPage() {
                 tabIndex="-1"
               >
                 {showPassword ? (
-                  // Eye Off icon
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     fill="none"
@@ -255,7 +266,6 @@ export default function LoginPage() {
                     />
                   </svg>
                 ) : (
-                  // Eye Open icon
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     fill="none"
@@ -285,7 +295,6 @@ export default function LoginPage() {
                 </p>
               )}
             </div>
-
 
             {/* Submit */}
             <button
