@@ -76,7 +76,16 @@ app.post("/api/gemini", async (req, res) => {
 // ============================================================================
 // LOGIN ENDPOINT - Fixed to support both Google and Email/Password
 // ============================================================================
-app.post("/api/login", async (req, res) => {
+
+const rateLimit = require('express-rate-limit');
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 attempts
+  message: 'Too many login attempts, try again later'
+});
+
+app.post("/api/login", loginLimiter, async (req, res) => {
   const { email, password } = req.body;
 
   // Validate input fields
