@@ -321,8 +321,17 @@ app.post("/api/signup", async (req, res) => {
     }
 
     if (existingUser) {
+      // Check if it's a Google-only account
+      if (existingUser.google_id && (!existingUser.password_hash || existingUser.password_hash === '')) {
+        return res.status(400).json({ 
+          status: "error", 
+          message: "This email is registered with Google. Please sign in with Google instead." 
+        });
+      }
+      
       return res.status(400).json({ status: "error", message: "Email already exists" });
     }
+
 
     try {
       const password_hash = await bcrypt.hash(password, 10);
