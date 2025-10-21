@@ -4,8 +4,13 @@ import { FaFacebookF } from "react-icons/fa";
 import { FcGoogle } from "react-icons/fc";
 import Alert from '@mui/material/Alert';
 import { useNavigate } from "react-router-dom";
+import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
+import { jwtDecode } from 'jwt-decode';
 
-export default function LoginPage() {
+//Google Client ID
+const GOOGLE_CLIENT_ID = "951421250117-tsbuglbst1a4oktfvhd6ht6j4komoue0.apps.googleusercontent.com";
+
+function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState({});
@@ -14,9 +19,8 @@ export default function LoginPage() {
   const [submitted, setSubmitted] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isSuspended, setIsSuspended] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
-
-
 
   // Auto-hide alert after duration (longer for suspension messages)
   useEffect(() => {
@@ -89,6 +93,7 @@ export default function LoginPage() {
     }
 
     setAlertMessage("");
+    setIsLoading(true);
 
     try {
       const response = await fetch("http://localhost:5000/api/login", {
@@ -104,6 +109,7 @@ export default function LoginPage() {
         setAlertSeverity("warning");
         setIsSuspended(true);
         setErrors({});
+        setIsLoading(false);
         return;
       }
 
@@ -127,6 +133,7 @@ export default function LoginPage() {
         setAlertSeverity("error");
         setIsSuspended(false);
         setErrors({ email: "Invalid credentials", password: "Invalid credentials" });
+        setIsLoading(false);
       }
 
     } catch (error) {
@@ -134,7 +141,65 @@ export default function LoginPage() {
       setAlertMessage("Server error. Try again later.");
       setAlertSeverity("error");
       setIsSuspended(false);
+      setIsLoading(false);
     }
+  };
+
+  // Handle Google Login Success
+  const handleGoogleSuccess = async (credentialResponse) => {
+    try {
+      setIsLoading(true);
+      console.log("🔐 Google login initiated...");
+
+      // Decode JWT token from Google
+      const decoded = jwtDecode(credentialResponse.credential);
+      console.log("📧 Google user info:", decoded);
+
+      // Send to backend
+      const response = await fetch("http://localhost:5000/api/auth/google", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: decoded.email,
+          firstname: decoded.given_name,
+          lastname: decoded.family_name,
+          googleId: decoded.sub,
+          picture: decoded.picture,
+          email_verified: decoded.email_verified
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        sessionStorage.setItem("token", data.token);
+        console.log("✅ Google login successful!");
+        
+        const role = data.user.role;
+        if (role === "admin") {
+          navigate("/admin");
+        } else {
+          navigate("/taratrabaho");
+        }
+      } else {
+        setAlertMessage(data.message || "Google login failed");
+        setAlertSeverity("error");
+        setIsLoading(false);
+      }
+
+    } catch (error) {
+      console.error("❌ Google login error:", error);
+      setAlertMessage("Failed to login with Google. Please try again.");
+      setAlertSeverity("error");
+      setIsLoading(false);
+    }
+  };
+
+  // Handle Google Login Error
+  const handleGoogleError = () => {
+    console.error("❌ Google login failed");
+    setAlertMessage("Google login failed. Please try again.");
+    setAlertSeverity("error");
   };
 
   return (
@@ -168,6 +233,7 @@ export default function LoginPage() {
             onClick={() => navigate('/')}
             className="absolute top-4 left-4 flex items-center gap-2 text-gray-700 hover:text-gray-900 transition-colors group"
             type="button"
+            disabled={isLoading}
           >
             <svg 
               xmlns="http://www.w3.org/2000/svg" 
@@ -199,6 +265,7 @@ export default function LoginPage() {
                 type="email"
                 value={email}
                 onChange={handleInputChange}
+                disabled={isLoading}
                 className={`mt-1 w-full rounded-lg border p-2 focus:outline-none focus:ring-2 bg-[#BAE8E8] ${
                   submitted && errors.email
                     ? "border-red-500 focus:ring-red-500 focus:border-red-500"
@@ -233,6 +300,7 @@ export default function LoginPage() {
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={handleInputChange}
+                disabled={isLoading}
                 className={`mt-1 w-full rounded-lg border p-2 focus:outline-none focus:ring-2 bg-[#BAE8E8] ${
                   submitted && errors.password
                     ? "border-red-500 focus:ring-red-500 focus:border-red-500"
@@ -247,6 +315,7 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
+                disabled={isLoading}
                 className="absolute right-3 top-9.5 text-gray-600 hover:text-gray-800 focus:outline-none"
                 tabIndex="-1"
               >
@@ -299,20 +368,45 @@ export default function LoginPage() {
             {/* Submit */}
             <button
               type="submit"
-              className="block px-6 mx-auto rounded-md bg-[#2C275C] py-2 font-semibold text-white transition hover:bg-[#1b163e] cursor-pointer"
+              disabled={isLoading}
+              className={`block w-full px-6 rounded-md py-2 font-semibold text-white transition ${
+                isLoading 
+                  ? 'bg-gray-400 cursor-not-allowed' 
+                  : 'bg-[#2C275C] hover:bg-[#1b163e] cursor-pointer'
+              }`}
             >
-              Trabaho Na!
+              {isLoading ? (
+                <div className="flex items-center justify-center gap-2">
+                  <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Logging in...
+                </div>
+              ) : (
+                'Trabaho Na!'
+              )}
             </button>
           </form>
 
           {/* Extra Links */}
           <p className="mt-6 mb-1 text-center text-sm">
-            <a href="/Signup" className="text-[#272343] font-bold underline hover:underline">
+            <a 
+              href="/Signup" 
+              className={`text-[#272343] font-bold underline hover:underline ${
+                isLoading ? 'pointer-events-none opacity-50' : ''
+              }`}
+            >
               Don't have an account? Sign up
             </a>
           </p>
           <p className="text-center text-sm">
-            <a href="/Forget" className="text-[#272343] font-bold underline hover:underline">
+            <a 
+              href="/Forget" 
+              className={`text-[#272343] font-bold underline hover:underline ${
+                isLoading ? 'pointer-events-none opacity-50' : ''
+              }`}
+            >
               Forget Password?
             </a>
           </p>
@@ -334,21 +428,32 @@ export default function LoginPage() {
 
           {/* Social Buttons */}
           <div className="flex justify-center lg:justify-end gap-4 mt-4">
-            <a
-              href="https://www.facebook.com/login"
-              className="flex items-center gap-2 px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 hover:scale-105 hover:shadow-lg transition transform duration-200 cursor-pointer"
-            >
-              <FaFacebookF /> Facebook
-            </a>
-            <a
-              href="https://accounts.google.com/signin"
-              className="flex items-center gap-2 px-4 py-2 rounded-md bg-white text-gray-800 border hover:bg-gray-100 hover:scale-105 hover:shadow-lg transition transform duration-200 cursor-pointer"
-            >
-              <FcGoogle /> Gmail
-            </a>
+            
+            {/* Google Login Button - Using GoogleLogin Component */}
+            <div className="flex items-center">
+              <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={handleGoogleError}
+                theme="outline"
+                size="large"
+                text="signin_with"
+                shape="rectangular"
+                width="200"
+                logo_alignment="left"
+              />
+            </div>
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+// Wrap with GoogleOAuthProvider
+export default function LoginPage() {
+  return (
+    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+      <LoginForm />
+    </GoogleOAuthProvider>
   );
 }

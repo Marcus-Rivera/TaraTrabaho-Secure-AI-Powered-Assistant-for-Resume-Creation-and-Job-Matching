@@ -74,9 +74,8 @@ app.post("/api/gemini", async (req, res) => {
 });
 
 // ============================================================================
-// LOGIN ENDPOINT
+// LOGIN ENDPOINT - Fixed to support both Google and Email/Password
 // ============================================================================
-// Verifies user credentials against stored data in the database.
 app.post("/api/login", async (req, res) => {
   const { email, password } = req.body;
 
@@ -93,11 +92,27 @@ app.post("/api/login", async (req, res) => {
       return res.status(500).json({ message: "Database error" });
     }
 
-    // Handle case where no user matches the provided email
+    // ✅ FIX: Check if user exists first
     if (!user) {
       return res.status(401).json({ 
         status: "error", 
         message: "Invalid email or password" 
+      });
+    }
+
+    // ✅ Check if this is a Google-only account
+    if (!user.password_hash && user.google_id) {
+      return res.status(401).json({ 
+        status: "error", 
+        message: "This account uses Google login. Please sign in with Google." 
+      });
+    }
+
+    // ✅ Check if account has no password (shouldn't happen, but safety check)
+    if (!user.password_hash) {
+      return res.status(401).json({ 
+        status: "error", 
+        message: "Account configuration error. Please contact support." 
       });
     }
 
@@ -127,6 +142,7 @@ app.post("/api/login", async (req, res) => {
       { expiresIn: "1h" }
     );
 
+    // Track login activity
     const activityQuery = `
       INSERT INTO user_activity (user_id, activity_type, activity_date)
       VALUES (?, 'login', date('now'))
@@ -1964,6 +1980,166 @@ app.get('/api/analytics/summary', (req, res) => {
     });
   });
 });
+
+// ============================================================================
+// GOOGLE OAUTH LOGIN/SIGNUP ENDPOINT
+// ============================================================================
+// Add this endpoint to your server.js (after your other auth endpoints)
+
+app.post("/api/auth/google", async (req, res) => {
+  try {
+    const { email, firstname, lastname, googleId, picture, email_verified } = req.body;
+
+    console.log("📧 Google login attempt for:", email);
+
+    // Check if email is verified by Google
+    if (!email_verified) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Email not verified by Google. Please use a verified Google account." 
+      });
+    }
+
+    // Check if user exists
+    const checkQuery = 'SELECT * FROM user WHERE email = ?';
+    
+    db.get(checkQuery, [email], async (err, existingUser) => {
+      if (err) {
+        console.error("DB Error:", err);
+        return res.status(500).json({ success: false, message: "Database error" });
+      }
+
+      let user;
+
+      if (existingUser) {
+        // ✅ User exists - log them in
+        console.log("✅ Existing user found:", email);
+        user = existingUser;
+
+        // Check if account is suspended
+        if (user.status === 'suspended') {
+          return res.status(403).json({ 
+            success: false,
+            status: "suspended",
+            message: "Your account has been suspended. Please contact support at taratrabaho@gmail.com for assistance." 
+          });
+        }
+
+        // Update google_id if not set
+        if (!user.google_id) {
+          console.log("🔗 Linking Google account to existing user");
+          db.run('UPDATE user SET google_id = ? WHERE user_id = ?', [googleId, user.user_id], (err) => {
+            if (err) console.error("Error updating google_id:", err);
+          });
+        }
+
+        // Track login activity
+        const activityQuery = `
+          INSERT INTO user_activity (user_id, activity_type, activity_date)
+          VALUES (?, 'login', date('now'))
+        `;
+        db.run(activityQuery, [user.user_id], (err) => {
+          if (err) console.error('Error tracking login:', err);
+        });
+
+      } else {
+        console.log("🆕 Creating new user from Google:", email);
+
+        // Extract username from email (before @)
+        const username = email.split('@')[0];
+        
+        const insertQuery = `
+          INSERT INTO user (
+            firstname, lastname, username, email, google_id, 
+            verified, role, status, password_hash
+          )
+          VALUES (?, ?, ?, ?, ?, 1, 'job_seeker', 'active', '')
+        `;
+
+        await new Promise((resolve, reject) => {
+          db.run(
+            insertQuery, 
+            [firstname || 'User', lastname || '', username, email, googleId],
+            function(err) {
+              if (err) {
+                console.error("Error creating user:", err);
+                
+                // Handle duplicate email (race condition)
+                if (err.message.includes("UNIQUE constraint")) {
+                  reject(new Error("Email already exists"));
+                } else {
+                  reject(err);
+                }
+              } else {
+                console.log("✅ User created successfully with ID:", this.lastID);
+                
+                // Fetch the newly created user
+                db.get('SELECT * FROM user WHERE user_id = ?', [this.lastID], (err, newUser) => {
+                  if (err) {
+                    reject(err);
+                  } else {
+                    user = newUser;
+                    
+                    // Track signup activity
+                    const activityQuery = `
+                      INSERT INTO user_activity (user_id, activity_type, activity_date)
+                      VALUES (?, 'signup', date('now'))
+                    `;
+                    db.run(activityQuery, [user.user_id], (err) => {
+                      if (err) console.error('Error tracking signup:', err);
+                    });
+                    
+                    resolve();
+                  }
+                });
+              }
+            }
+          );
+        });
+      }
+
+      // Create JWT token
+      const token = jwt.sign(
+        { id: user.user_id, email: user.email, role: user.role }, 
+        SECRET_KEY, 
+        { expiresIn: "1h" }
+      );
+
+      console.log("🎉 Google authentication successful for:", email);
+
+      res.json({
+        success: true,
+        message: "Google login successful",
+        token,
+        user: {
+          id: user.user_id,
+          email: user.email,
+          firstname: user.firstname,
+          lastname: user.lastname,
+          role: user.role,
+          status: user.status,
+        },
+      });
+    });
+
+  } catch (error) {
+    console.error("❌ Google auth error:", error);
+    
+    if (error.message === "Email already exists") {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Email already exists. Please try logging in instead." 
+      });
+    }
+    
+    res.status(500).json({ 
+      success: false, 
+      message: "Server error during Google authentication. Please try again." 
+    });
+  }
+});
+
+
 
 
 // ============================================================================
