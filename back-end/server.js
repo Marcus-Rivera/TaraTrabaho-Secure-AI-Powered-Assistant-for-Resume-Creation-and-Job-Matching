@@ -95,7 +95,18 @@ app.post("/api/login", async (req, res) => {
 
     // Handle case where no user matches the provided email
     if (!user) {
-      return res.status(401).json({ status: "error", message: "Invalid email or password" });
+      return res.status(401).json({ 
+        status: "error", 
+        message: "Invalid email or password" 
+      });
+    }
+
+    // ✅ CHECK IF USER ACCOUNT IS SUSPENDED
+    if (user.status === 'suspended') {
+      return res.status(403).json({ 
+        status: "suspended", 
+        message: "Your account has been suspended. Please contact support at support@taratrabaho.com or call +63 123 456 7890 for assistance." 
+      });
     }
 
     // Compare provided password with the hashed password in the database
@@ -103,14 +114,20 @@ app.post("/api/login", async (req, res) => {
 
     // Handle invalid password case
     if (!match) {
-      return res.status(401).json({ status: "error", message: "Invalid email or password" });
+      return res.status(401).json({ 
+        status: "error", 
+        message: "Invalid email or password" 
+      });
     }
 
     // Create JWT (expires in 1 hour) 
-    const token = jwt.sign({ id: user.user_id, email: user.email, role: user.role }, SECRET_KEY, 
-      {expiresIn: "1h",});
+    const token = jwt.sign(
+      { id: user.user_id, email: user.email, role: user.role }, 
+      SECRET_KEY, 
+      { expiresIn: "1h" }
+    );
 
-     // Successful authentication → send user info (but omit sensitive data)
+    // Successful authentication → send user info (but omit sensitive data)
     return res.json({
       success: true,
       message: "Login successful",
@@ -121,6 +138,7 @@ app.post("/api/login", async (req, res) => {
         firstname: user.firstname,
         lastname: user.lastname,
         role: user.role,
+        status: user.status,
       },
     });
   });
@@ -1616,6 +1634,125 @@ app.delete('/api/profile-picture/:userId', (req, res) => {
     }
     
     res.json({ success: true, message: 'Profile picture deleted successfully' });
+  });
+});
+
+// ============================================================================
+// SKILLS API ENDPOINTS - Add these to your server.js
+// ============================================================================
+
+// GET user's skills
+app.get('/api/skills/:userId', (req, res) => {
+  const { userId } = req.params;
+  
+  const query = `
+    SELECT skill_id, skill_name, created_at
+    FROM skills 
+    WHERE user_id = ?
+    ORDER BY created_at DESC
+  `;
+  
+  db.all(query, [userId], (err, rows) => {
+    if (err) {
+      console.error('Error fetching skills:', err);
+      return res.status(500).json({ error: 'Failed to fetch skills' });
+    }
+    
+    res.json({ success: true, skills: rows });
+  });
+});
+
+// ADD a new skill
+app.post('/api/skills', (req, res) => {
+  const { userId, skillName } = req.body;
+  
+  if (!userId || !skillName) {
+    return res.status(400).json({ error: 'userId and skillName are required' });
+  }
+  
+  const query = `
+    INSERT INTO skills (user_id, skill_name)
+    VALUES (?, ?)
+  `;
+  
+  db.run(query, [userId, skillName.trim()], function(err) {
+    if (err) {
+      if (err.message.includes('UNIQUE constraint')) {
+        return res.status(400).json({ error: 'Skill already exists' });
+      }
+      console.error('Error adding skill:', err);
+      return res.status(500).json({ error: 'Failed to add skill' });
+    }
+    
+    res.json({ 
+      success: true, 
+      message: 'Skill added successfully',
+      skill: {
+        skill_id: this.lastID,
+        skill_name: skillName.trim()
+      }
+    });
+  });
+});
+
+// DELETE a skill
+app.delete('/api/skills/:skillId', (req, res) => {
+  const { skillId } = req.params;
+  
+  const query = 'DELETE FROM skills WHERE skill_id = ?';
+  
+  db.run(query, [skillId], function(err) {
+    if (err) {
+      console.error('Error deleting skill:', err);
+      return res.status(500).json({ error: 'Failed to delete skill' });
+    }
+    
+    if (this.changes === 0) {
+      return res.status(404).json({ error: 'Skill not found' });
+    }
+    
+    res.json({ success: true, message: 'Skill deleted successfully' });
+  });
+});
+
+// BULK UPDATE skills (optional - for replacing all skills at once)
+app.put('/api/skills/bulk/:userId', (req, res) => {
+  const { userId } = req.params;
+  const { skills } = req.body; // Array of skill names
+  
+  if (!Array.isArray(skills)) {
+    return res.status(400).json({ error: 'skills must be an array' });
+  }
+  
+  // Start transaction
+  db.serialize(() => {
+    // Delete existing skills
+    db.run('DELETE FROM skills WHERE user_id = ?', [userId], (err) => {
+      if (err) {
+        console.error('Error deleting old skills:', err);
+        return res.status(500).json({ error: 'Failed to update skills' });
+      }
+      
+      if (skills.length === 0) {
+        return res.json({ success: true, message: 'All skills removed' });
+      }
+      
+      // Insert new skills
+      const stmt = db.prepare('INSERT INTO skills (user_id, skill_name) VALUES (?, ?)');
+      
+      skills.forEach(skill => {
+        stmt.run([userId, skill.trim()]);
+      });
+      
+      stmt.finalize((err) => {
+        if (err) {
+          console.error('Error inserting skills:', err);
+          return res.status(500).json({ error: 'Failed to update skills' });
+        }
+        
+        res.json({ success: true, message: 'Skills updated successfully' });
+      });
+    });
   });
 });
 

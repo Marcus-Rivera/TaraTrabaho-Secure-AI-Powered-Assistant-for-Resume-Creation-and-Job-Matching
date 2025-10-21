@@ -829,7 +829,7 @@ const JobListing = () => {
                           <span className="text-xs text-green-600 font-medium">(Remote)</span>
                         )}
                         <span className="text-xs text-gray-400">•</span>
-                        <span className="text-xs text-blue-600">{formatVacantLeft(job.vacantleft)} positions</span>
+                        <span className="text-xs text-blue-600">{formatVacantLeft(job.vacantleft)} Vacancies</span>
                       </div>
                     </div>
                   </td>

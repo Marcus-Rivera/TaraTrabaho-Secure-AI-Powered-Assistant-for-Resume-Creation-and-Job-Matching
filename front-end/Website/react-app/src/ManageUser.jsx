@@ -362,9 +362,9 @@ const ManageUser = () => {
                       onChange={(e) => handleActionChange(user.user_id, e.target.value)}
                       className="block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
-                      <option value="Approved">Approved</option>
-                      <option value="Suspended">Suspended</option>
-                      <option value="Pending">Pending</option>
+                      <option value="spproved">Approved</option>
+                      <option value="suspended">Suspended</option>
+                      <option value="pending">Pending</option>
                     </select>
                   </td>
                   <td className="px-4 py-4 lg:px-6 whitespace-nowrap text-sm text-gray-500">

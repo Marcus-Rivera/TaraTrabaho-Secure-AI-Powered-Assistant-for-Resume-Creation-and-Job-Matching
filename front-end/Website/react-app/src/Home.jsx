@@ -47,22 +47,37 @@ const SidebarContent = ({ onClose, isMobile }) => {
     }
   }, []);
 
+
   useEffect(() => {
     const storedUser = sessionStorage.getItem("userData");
     if (storedUser) {
       setUserData(JSON.parse(storedUser));
     }
 
-    // ✅ Listen for updates
+    // ✅ Listen for user data updates
     const handleUserUpdate = () => {
       const updated = sessionStorage.getItem("userData");
       if (updated) setUserData(JSON.parse(updated));
     };
 
+    // ✅ Listen for profile picture updates
+    const handleProfilePictureUpdate = (event) => {
+      const userId = event.detail?.userId || userData?.user_id;
+      if (userId) {
+        console.log('🔄 Reloading profile picture in sidebar...');
+        loadProfilePicture(userId);
+      }
+    };
+
     window.addEventListener("userDataUpdated", handleUserUpdate);
-    return () => window.removeEventListener("userDataUpdated", handleUserUpdate);
-  }, []);
-  
+    window.addEventListener("profilePictureUpdated", handleProfilePictureUpdate);
+    
+    return () => {
+      window.removeEventListener("userDataUpdated", handleUserUpdate);
+      window.removeEventListener("profilePictureUpdated", handleProfilePictureUpdate);
+    };
+  }, [userData?.user_id]); // Add dependency to re-attach listener when user changes
+
   // load profile picture
   const loadProfilePicture = (userId) => {
   fetch(`http://localhost:5000/api/profile-picture/${userId}`)

@@ -10,20 +10,23 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState({});
   const [alertMessage, setAlertMessage] = useState("");
-  const [alertSeverity, setAlertSeverity] = useState("error"); // For MUI Alert
-  const [submitted, setSubmitted] = useState(false); // Track if form was submitted
+  const [alertSeverity, setAlertSeverity] = useState("error");
+  const [submitted, setSubmitted] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [isSuspended, setIsSuspended] = useState(false); // NEW: Track suspension state
   const navigate = useNavigate();
 
-  // Auto-hide alert after 5 seconds
+  // Auto-hide alert after duration (longer for suspension messages)
   useEffect(() => {
     if (alertMessage) {
+      const duration = isSuspended ? 10000 : 5000; // 10s for suspension, 5s for others
       const timer = setTimeout(() => {
         setAlertMessage("");
-      }, 5000);
+        setIsSuspended(false);
+      }, duration);
       return () => clearTimeout(timer);
     }
-  }, [alertMessage]);
+  }, [alertMessage, isSuspended]);
 
   const validateField = (fieldName, value) => {
     let fieldErrors = {};
@@ -83,6 +86,7 @@ export default function LoginPage() {
     if (!validateForm()) {
       setAlertMessage("Please fix the errors below");
       setAlertSeverity("error");
+      setIsSuspended(false);
       return;
     }
 
@@ -98,6 +102,15 @@ export default function LoginPage() {
 
       const data = await response.json();
 
+      // ✅ NEW: Check if account is suspended
+      if (data.status === "suspended") {
+        setAlertMessage(data.message);
+        setAlertSeverity("warning"); // Orange warning color
+        setIsSuspended(true);
+        setErrors({}); // Clear field errors
+        return;
+      }
+
       if (response.ok && data.success) {
         // Success: Clear form, errors, and submitted state
         sessionStorage.setItem("token", data.token);
@@ -105,6 +118,8 @@ export default function LoginPage() {
         setPassword("");
         setErrors({});
         setSubmitted(false);
+        setIsSuspended(false);
+        
         const role = data.user.role;
         if (role === "admin") {
           navigate("/admin");
@@ -116,6 +131,7 @@ export default function LoginPage() {
         const errorMsg = data.message || "Invalid email or password";
         setAlertMessage(errorMsg);
         setAlertSeverity("error");
+        setIsSuspended(false);
         // Highlight fields on server error (assume email/password invalid)
         setErrors({ email: "Invalid credentials", password: "Invalid credentials" });
       }
@@ -124,6 +140,7 @@ export default function LoginPage() {
       console.error("Login error:", error);
       setAlertMessage("Server error. Try again later.");
       setAlertSeverity("error");
+      setIsSuspended(false);
     }
   };
 
@@ -132,10 +149,20 @@ export default function LoginPage() {
       className="flex flex-col-reverse lg:flex-row bg-cover min-h-screen lg:items-center pt-12 pb-35 lg:pt-10 lg:pb-10"
       style={{ backgroundImage: `url(${bg})` }}
     >
-      {/* Alert if login fails */}
+      {/* Alert if login fails or account suspended */}
       {alertMessage && (
-        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-lg">
-          <Alert severity={alertSeverity} onClose={() => setAlertMessage("")}>
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-lg px-4">
+          <Alert 
+            severity={alertSeverity} 
+            onClose={() => {
+              setAlertMessage("");
+              setIsSuspended(false);
+            }}
+            sx={isSuspended ? { 
+              fontSize: '0.95rem',
+              '& .MuiAlert-message': { width: '100%' }
+            } : {}}
+          >
             {alertMessage}
           </Alert>
         </div>
@@ -272,7 +299,7 @@ export default function LoginPage() {
           {/* Extra Links */}
           <p className="mt-6 mb-1 text-center text-sm">
             <a href="/Signup" className="text-[#272343] font-bold underline hover:underline">
-              Don’t have an account? Sign up
+              Don't have an account? Sign up
             </a>
           </p>
           <p className="text-center text-sm">
