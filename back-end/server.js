@@ -952,7 +952,7 @@ app.get('/api/chat/history/:userId', (req, res) => {
         resume_data: row.resume_data ? JSON.parse(row.resume_data) : null
       }));
 
-      console.log(`✅ Fetched ${parsedResults.length} chats for user ${userId}`);
+      //console.log(`✅ Fetched ${parsedResults.length} chats for user ${userId}`);
       if (parsedResults.length > 0) {
         console.log('📅 Most recent chat:', parsedResults[0].chat_id, 'at', parsedResults[0].timestamp);
       }
@@ -2008,7 +2008,6 @@ app.post("/api/auth/google", async (req, res) => {
   try {
     const { email, firstname, lastname, googleId, picture, email_verified } = req.body;
 
-    console.log("📧 Google login attempt for:", email);
 
     // Check if email is verified by Google
     if (!email_verified) {
@@ -2123,7 +2122,6 @@ app.post("/api/auth/google", async (req, res) => {
         { expiresIn: "1h" }
       );
 
-      console.log("🎉 Google authentication successful for:", email);
 
       res.json({
         success: true,
