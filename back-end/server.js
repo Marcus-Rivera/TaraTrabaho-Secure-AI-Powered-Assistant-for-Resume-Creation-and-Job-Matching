@@ -28,6 +28,17 @@ app.set("trust proxy", true);
 
 // Connect to SQLite database
 const db = new sqlite3.Database("tratrabaho.db");
+
+process.on('SIGINT', () => {
+  db.close((err) => {
+    if (err) {
+      console.error(err.message);
+    }
+    console.log('Database connection closed.');
+    process.exit(0);
+  });
+});
+
 const tempUserStore = {};
 
 // ============================================================================
@@ -2120,7 +2131,7 @@ app.post("/api/auth/google", async (req, res) => {
       const token = jwt.sign(
         { id: user.user_id, email: user.email, role: user.role }, 
         SECRET_KEY, 
-        { expiresIn: "1h" }
+        { expiresIn: "7d" }
       );
 
 
