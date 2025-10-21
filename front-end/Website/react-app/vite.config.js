@@ -12,7 +12,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'https://taratrabaho-secure-ai-powered-assistant.onrender.com',
+        target: 'https://localhost:5000',
         changeOrigin: true,
         secure: false,
       },
