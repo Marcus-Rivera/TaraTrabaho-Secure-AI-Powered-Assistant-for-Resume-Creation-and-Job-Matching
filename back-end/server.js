@@ -24,7 +24,7 @@ const GEMINI_API_KEY = "AIzaSyD-QXNB8c8jiYNisBRSU33GcyP1txqhjt0";
 app.use(cors());
 app.use(express.json());
 app.use(bodyParser.json());
-app.set("trust proxy", true);
+app.set("trust proxy", 1);
 
 // Connect to SQLite database
 const db = new sqlite3.Database("tratrabaho.db");
