@@ -378,15 +378,15 @@ app.post("/api/signup", async (req, res) => {
       const transporter_job = nodemailer.createTransport({
         service: "gmail",
         auth: {
-          user: "kayle1410@gmail.com",
-          pass: "vlun efbq wzkx wffq",
+          user: "taratrabaho0@gmail.com",
+          pass: "jkdv bdfk xryh fvql",
         },
       });
 
       // Send OTP via email
       try {
         await transporter_job.sendMail({
-          from: '"TaraTrabaho" <kayle1410@gmail.com>',
+          from: '"TaraTrabaho Job" <taratrabaho0@gmail.com>',
           to: email,
           subject: "Your TaraTrabaho OTP Code",
           text: `Your OTP code is ${otp}. It will expire in 5 minutes.`,

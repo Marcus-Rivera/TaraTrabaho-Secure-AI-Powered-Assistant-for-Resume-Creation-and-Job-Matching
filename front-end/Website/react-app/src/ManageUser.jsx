@@ -210,9 +210,9 @@ const ManageUser = () => {
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="All Status">All Status</option>
-              <option value="Approved">Approved</option>
-              <option value="Suspended">Suspended</option>
-              <option value="Pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="suspended">Suspended</option>
+              <option value="pending">Pending</option>
             </select>
           </div>
         </div>
@@ -274,7 +274,7 @@ const ManageUser = () => {
                   <div className="flex items-center space-x-2">
                     <span
                       className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        user.status === "Approved"
+                        user.status === "approved"
                           ? "bg-green-100 text-green-800"
                           : user.status === "Suspended"
                           ? "bg-red-100 text-red-800"
@@ -304,9 +304,9 @@ const ManageUser = () => {
                     onChange={(e) => handleActionChange(user.user_id, e.target.value)}
                     className="block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="Approved">Approved</option>
-                    <option value="Suspended">Suspended</option>
-                    <option value="Pending">Pending</option>
+                    <option value="approved">Approved</option>
+                    <option value="suspended">Suspended</option>
+                    <option value="pending">Pending</option>
                   </select>
                 </div>
               </div>
