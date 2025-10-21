@@ -127,6 +127,14 @@ app.post("/api/login", async (req, res) => {
       { expiresIn: "1h" }
     );
 
+    const activityQuery = `
+      INSERT INTO user_activity (user_id, activity_type, activity_date)
+      VALUES (?, 'login', date('now'))
+    `;
+    db.run(activityQuery, [user.user_id], (err) => {
+      if (err) console.error('Error tracking login:', err);
+    });
+
     // Successful authentication → send user info (but omit sensitive data)
     return res.json({
       success: true,
@@ -651,6 +659,18 @@ app.put("/api/profile/:email", (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
+    db.get('SELECT user_id FROM user WHERE email = ?', [email], (err, user) => {
+      if (!err && user) {
+        const activityQuery = `
+          INSERT INTO user_activity (user_id, activity_type, activity_date)
+          VALUES (?, 'profile_updated', date('now'))
+        `;
+        db.run(activityQuery, [user.user_id], (err) => {
+          if (err) console.error('Error tracking profile update:', err);
+        });
+      }
+    });
+
     res.json({ message: "Profile updated successfully" });
   });
 });
@@ -700,6 +720,17 @@ app.post('/api/resume/save', upload.single('resume'), async (req, res) => {
       if (err) {
         console.error('Database error:', err);
         return res.status(500).json({ error: 'Failed to save resume to database' });
+      }
+
+      // Track resume creation activity
+      if (userId) {
+        const activityQuery = `
+          INSERT INTO user_activity (user_id, activity_type, activity_date)
+          VALUES (?, 'resume_created', date('now'))
+        `;
+        db.run(activityQuery, [userId], (err) => {
+          if (err) console.error('Error tracking resume creation:', err);
+        });
       }
 
       res.json({
@@ -1070,6 +1101,7 @@ app.post('/api/jobs/recommend', async (req, res) => {
             .filter(job => job !== undefined)
             .slice(0, 5); // Ensure max 5 recommendations
 
+
           // 5. Format response
           const formattedRecommendations = recommendedJobs.map(job => ({
             id: job.job_id,
@@ -1086,6 +1118,21 @@ app.post('/api/jobs/recommend', async (req, res) => {
             min_salary: job.min_salary,
             max_salary: job.max_salary,
           }));
+
+          if (formattedRecommendations.length > 0) {
+            const activityQuery = `
+              INSERT INTO user_activity (user_id, activity_type, activity_date)
+              VALUES (?, 'recommendation_made', date('now'))
+            `;
+            db.run(activityQuery, [userId], (err) => {
+              if (err) {
+                console.error('Error tracking recommendation:', err);
+              } else {
+                console.log('✅ Tracked AI recommendation for user:', userId);
+              }
+            });
+          }
+
 
           res.json({
             success: true,
@@ -1111,6 +1158,7 @@ app.post('/api/jobs/recommend', async (req, res) => {
             remote: job.remote === 1,
           }));
           
+
           res.json({
             success: true,
             recommendations: fallbackJobs,
@@ -1178,8 +1226,8 @@ app.get('/api/stats/:userId', (req, res) => {
 const EMAIL_CONFIG_JOB = {
   service: 'gmail', // or 'outlook', 'yahoo', etc.
   auth: {
-    user: 'wantedspexz@gmail.com', // Your email
-    pass: 'xrsn bbgm mvnn xbjc' 
+    user: 'taratrabaho0@gmail.com', // Your email
+    pass: 'jkdv bdfk xryh fvql'
   }
 };
 
@@ -1274,9 +1322,17 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
       );
     });
 
+    const activityQuery = `
+      INSERT INTO user_activity (user_id, activity_type, activity_date)
+      VALUES (?, 'job_applied', date('now'))
+    `;
+    db.run(activityQuery, [userId], (err) => {
+      if (err) console.error('Error tracking job application:', err);
+    });
+
     // 📧 SEND EMAIL TO COMPANY
     const companyMailOptions = {
-      from: EMAIL_CONFIG_JOB.auth.user,
+      from: '"TaraTrabaho Job" <taratrabaho0@gmail.com>',
       to: job.company_email,
       replyTo: email, // Company can reply directly to applicant
       subject: `New Job Application: ${job.title} - ${fullName}`,
@@ -1319,7 +1375,7 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
 
     // 📧 SEND CONFIRMATION EMAIL TO APPLICANT
     const applicantMailOptions = {
-      from: EMAIL_CONFIG_JOB.auth.user,
+      from: '"TaraTrabaho Job" <taratrabaho0@gmail.com>',
       to: email,
       subject: `✅ Application Submitted - ${job.title} at ${job.company}`,
       html: `
@@ -1752,6 +1808,159 @@ app.put('/api/skills/bulk/:userId', (req, res) => {
         
         res.json({ success: true, message: 'Skills updated successfully' });
       });
+    });
+  });
+});
+
+// ============================================================================
+// ANALYTICS ENDPOINTS
+// ============================================================================
+
+// Track user activity (call this from frontend on key actions)
+app.post('/api/analytics/track', (req, res) => {
+  const { userId, activityType } = req.body;
+  
+  if (!userId || !activityType) {
+    return res.status(400).json({ error: 'userId and activityType required' });
+  }
+  
+  const activityDate = new Date().toISOString().split('T')[0];
+  const query = `
+    INSERT INTO user_activity (user_id, activity_type, activity_date)
+    VALUES (?, ?, ?)
+  `;
+  
+  db.run(query, [userId, activityType, activityDate], function(err) {
+    if (err) {
+      console.error('Error tracking activity:', err);
+      return res.status(500).json({ error: 'Failed to track activity' });
+    }
+    res.json({ success: true });
+  });
+});
+
+// Get daily users count (last 30 days)
+app.get('/api/analytics/daily-users', (req, res) => {
+  const query = `
+    SELECT 
+      activity_date as date,
+      COUNT(DISTINCT user_id) as count
+    FROM user_activity
+    WHERE activity_type = 'login'
+      AND activity_date >= date('now', '-30 days')
+    GROUP BY activity_date
+    ORDER BY activity_date ASC
+  `;
+  
+  db.all(query, [], (err, rows) => {
+    if (err) {
+      console.error('Error fetching daily users:', err);
+      return res.status(500).json({ error: 'Failed to fetch data' });
+    }
+    res.json({ success: true, data: rows });
+  });
+});
+
+// Get resumes generated count (last 30 days)
+app.get('/api/analytics/resumes', (req, res) => {
+  const query = `
+    SELECT 
+      DATE(created_at) as date,
+      COUNT(*) as count
+    FROM resume
+    WHERE created_at >= date('now', '-30 days')
+    GROUP BY DATE(created_at)
+    ORDER BY date ASC
+  `;
+  
+  db.all(query, [], (err, rows) => {
+    if (err) {
+      console.error('Error fetching resume stats:', err);
+      return res.status(500).json({ error: 'Failed to fetch data' });
+    }
+    res.json({ success: true, data: rows });
+  });
+});
+
+// Get job applications count (last 30 days)
+app.get('/api/analytics/applications', (req, res) => {
+  const query = `
+    SELECT 
+      DATE(applied_at) as date,
+      COUNT(*) as count
+    FROM application
+    WHERE applied_at >= date('now', '-30 days')
+    GROUP BY DATE(applied_at)
+    ORDER BY date ASC
+  `;
+  
+  db.all(query, [], (err, rows) => {
+    if (err) {
+      console.error('Error fetching application stats:', err);
+      return res.status(500).json({ error: 'Failed to fetch data' });
+    }
+    res.json({ success: true, data: rows });
+  });
+});
+
+// Get job matches/recommendations count (last 30 days)
+app.get('/api/analytics/matches', (req, res) => {
+  const query = `
+    SELECT 
+      activity_date as date,
+      COUNT(*) as count
+    FROM user_activity
+    WHERE activity_type = 'recommendation_made'
+      AND activity_date >= date('now', '-30 days')
+    GROUP BY activity_date
+    ORDER BY activity_date ASC
+  `;
+  
+  db.all(query, [], (err, rows) => {
+    if (err) {
+      console.error('Error fetching match stats:', err);
+      return res.status(500).json({ error: 'Failed to fetch data' });
+    }
+    res.json({ success: true, data: rows });
+  });
+});
+
+// Get summary statistics
+app.get('/api/analytics/summary', (req, res) => {
+  const queries = {
+    totalUsers: 'SELECT COUNT(*) as count FROM user WHERE role = "job_seeker"',
+    totalResumes: 'SELECT COUNT(*) as count FROM resume',
+    totalApplications: 'SELECT COUNT(*) as count FROM application',
+    totalJobs: 'SELECT COUNT(*) as count FROM job',
+    activeUsersToday: `
+      SELECT COUNT(DISTINCT user_id) as count 
+      FROM user_activity 
+      WHERE activity_date = date('now')
+    `,
+    applicationsToday: `
+      SELECT COUNT(*) as count 
+      FROM application 
+      WHERE DATE(applied_at) = date('now')
+    `
+  };
+  
+  const results = {};
+  let completed = 0;
+  const total = Object.keys(queries).length;
+  
+  Object.entries(queries).forEach(([key, query]) => {
+    db.get(query, [], (err, row) => {
+      if (err) {
+        console.error(`Error fetching ${key}:`, err);
+        results[key] = 0;
+      } else {
+        results[key] = row.count;
+      }
+      
+      completed++;
+      if (completed === total) {
+        res.json({ success: true, summary: results });
+      }
     });
   });
 });
