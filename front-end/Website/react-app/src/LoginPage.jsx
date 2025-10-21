@@ -81,69 +81,78 @@ function LoginForm() {
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+  e.preventDefault();
 
-    setSubmitted(true);
+  setSubmitted(true);
 
-    if (!validateForm()) {
-      setAlertMessage("Please fix the errors below");
-      setAlertSeverity("error");
+  if (!validateForm()) {
+    setAlertMessage("Please fix the errors below");
+    setAlertSeverity("error");
+    setIsSuspended(false);
+    return;
+  }
+
+  setAlertMessage("");
+  setIsLoading(true);
+
+  try {
+    const response = await fetch("http://localhost:5000/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password })
+    });
+
+    // ✅ FIX: Handle rate limit (429) before parsing JSON
+    if (response.status === 429) {
+      setAlertMessage("Too many login attempts. Please try again in 15 minutes.");
+      setAlertSeverity("warning");
       setIsSuspended(false);
+      setIsLoading(false);
       return;
     }
 
-    setAlertMessage("");
-    setIsLoading(true);
+    const data = await response.json();
 
-    try {
-      const response = await fetch("http://localhost:5000/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password })
-      });
+    if (data.status === "suspended") {
+      setAlertMessage(data.message);
+      setAlertSeverity("warning");
+      setIsSuspended(true);
+      setErrors({});
+      setIsLoading(false);
+      return;
+    }
 
-      const data = await response.json();
-
-      if (data.status === "suspended") {
-        setAlertMessage(data.message);
-        setAlertSeverity("warning");
-        setIsSuspended(true);
-        setErrors({});
-        setIsLoading(false);
-        return;
-      }
-
-      if (response.ok && data.success) {
-        sessionStorage.setItem("token", data.token);
-        setEmail("");
-        setPassword("");
-        setErrors({});
-        setSubmitted(false);
-        setIsSuspended(false);
-        
-        const role = data.user.role;
-        if (role === "admin") {
-          navigate("/admin");
-        } else {
-          navigate("/taratrabaho");
-        }
+    if (response.ok && data.success) {
+      sessionStorage.setItem("token", data.token);
+      setEmail("");
+      setPassword("");
+      setErrors({});
+      setSubmitted(false);
+      setIsSuspended(false);
+      
+      const role = data.user.role;
+      if (role === "admin") {
+        navigate("/admin");
       } else {
-        const errorMsg = data.message || "Invalid email or password";
-        setAlertMessage(errorMsg);
-        setAlertSeverity("error");
-        setIsSuspended(false);
-        setErrors({ email: "Invalid credentials", password: "Invalid credentials" });
-        setIsLoading(false);
+        navigate("/taratrabaho");
       }
-
-    } catch (error) {
-      console.error("Login error:", error);
-      setAlertMessage("Server error. Try again later.");
+    } else {
+      const errorMsg = data.message || "Invalid email or password";
+      setAlertMessage(errorMsg);
       setAlertSeverity("error");
       setIsSuspended(false);
+      setErrors({ email: "Invalid credentials", password: "Invalid credentials" });
       setIsLoading(false);
     }
-  };
+
+  } catch (error) {
+    console.error("Login error:", error);
+    setAlertMessage("Server error. Try again later.");
+    setAlertSeverity("error");
+    setIsSuspended(false);
+    setIsLoading(false);
+  }
+};
 
   // Handle Google Login Success
   const handleGoogleSuccess = async (credentialResponse) => {
