@@ -23,31 +23,54 @@ const SidebarContent = ({ onClose, isMobile }) => {
 
   // Load user info from token and fetch full data with pfp
   useEffect(() => {
-    const token = sessionStorage.getItem("token");
-    if (!token) return;
-
-    try {
-      const decoded = JSON.parse(atob(token.split(".")[1]));
-      const email = decoded.email;
-      if (email) {
-        fetch(`http://localhost:5000/api/profile/${email}`)
-          .then((res) => res.json())
-          .then((data) => {
-            if (data) {
-              setUserData(data);
-              // Load profile picture
-              if (data.user_id) {
-                loadProfilePicture(data.user_id);
-              }
-            }
-          })
-          .catch((err) => console.error("Error loading profile:", err));
+    const loadUserData = () => {
+      const token = sessionStorage.getItem("token");
+      if (!token) {
+        setUserData(null);
+        setProfileImage(null);
+        return;
       }
-    } catch (error) {
-      console.error("Invalid token:", error);
-    }
-  }, []);
 
+      try {
+        const decoded = JSON.parse(atob(token.split(".")[1]));
+        const email = decoded.email;
+        if (email) {
+          fetch(`http://localhost:5000/api/profile/${email}`)
+            .then((res) => res.json())
+            .then((data) => {
+              if (data) {
+                console.log('👤 Loaded user data:', data.firstname, data.lastname);
+                setUserData(data);
+                sessionStorage.setItem("userData", JSON.stringify(data));
+                
+                if (data.user_id) {
+                  loadProfilePicture(data.user_id);
+                }
+              }
+            })
+            .catch((err) => console.error("Error loading profile:", err));
+        }
+      } catch (error) {
+        console.error("Invalid token:", error);
+        setUserData(null);
+        setProfileImage(null);
+      }
+    };
+
+    loadUserData();
+
+    // Listen for token changes
+    const handleTokenUpdate = () => {
+      console.log('🔄 Token updated, reloading user data...');
+      loadUserData();
+    };
+
+    window.addEventListener('tokenUpdated', handleTokenUpdate);
+
+    return () => {
+      window.removeEventListener('tokenUpdated', handleTokenUpdate);
+    };
+  }, []);
 
   useEffect(() => {
     const storedUser = sessionStorage.getItem("userData");

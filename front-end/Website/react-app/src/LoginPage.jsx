@@ -124,6 +124,7 @@ function LoginForm() {
 
     if (response.ok && data.success) {
       sessionStorage.setItem("token", data.token);
+      window.dispatchEvent(new Event('tokenUpdated'));
       setEmail("");
       setPassword("");
       setErrors({});
@@ -182,6 +183,7 @@ function LoginForm() {
 
       if (data.success) {
         sessionStorage.setItem("token", data.token);
+        window.dispatchEvent(new Event('tokenUpdated'));
         console.log("✅ Google login successful!");
         
         const role = data.user.role;

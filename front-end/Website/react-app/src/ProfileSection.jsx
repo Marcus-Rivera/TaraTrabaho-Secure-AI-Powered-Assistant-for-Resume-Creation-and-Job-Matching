@@ -86,6 +86,64 @@ const ProfileSection = () => {
     }
   }, [userData]);
 
+  // Validation functions
+  const validateBirthday = (birthday) => {
+    if (!birthday) return "Birthday is required";
+    
+    const birthDate = new Date(birthday);
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    
+    if (age < 16) {
+      return "You must be at least 16 years old";
+    }
+    
+    if (birthDate > today) {
+      return "Birthday cannot be in the future";
+    }
+    
+    return "";
+  };
+
+  const validatePhone = (phone) => {
+    if (!phone || !phone.trim()) return ""; // Optional field
+    
+    // Remove spaces and dashes
+    const cleanPhone = phone.replace(/[\s-]/g, '');
+    
+    // Philippine phone number validation
+    const phoneRegex = /^(09\d{9}|(\+639)\d{9})$/;
+    
+    if (!phoneRegex.test(cleanPhone)) {
+      return "Invalid Philippine phone number (e.g., 09123456789 or +639123456789)";
+    }
+    
+    return "";
+  };
+
+  const validateName = (name, fieldName) => {
+    if (!name || !name.trim()) {
+      return `${fieldName} is required`;
+    }
+    
+    if (name.trim().length < 2) {
+      return `${fieldName} must be at least 2 characters`;
+    }
+    
+    // Only letters, spaces, hyphens, and apostrophes
+    const nameRegex = /^[a-zA-Z\s'-]+$/;
+    if (!nameRegex.test(name)) {
+      return `${fieldName} can only contain letters`;
+    }
+    
+    return "";
+  };
+
   // Image upload function
   const handleImageUpload = async (event) => {
     const file = event.target.files[0];
@@ -171,41 +229,80 @@ const ProfileSection = () => {
   };
 
   const handleSave = async () => {
-    try {
-      const res = await fetch(
-        `http://localhost:5000/api/profile/${userData.email}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(formData),
-        }
-      );
+  // VALIDATE BEFORE SAVING
+  const firstnameError = validateName(formData.firstname, "First name");
+  const lastnameError = validateName(formData.lastname, "Last name");
+  const birthdayError = validateBirthday(formData.birthday);
+  const phoneError = validatePhone(formData.phone);
+  
+  // Check for any errors
+  if (firstnameError) {
+    setAlertType("error");
+    setAlertMsg(firstnameError);
+    setShowAlert(true);
+    setTimeout(() => setShowAlert(false), 5000);
+    return;
+  }
+  
+  if (lastnameError) {
+    setAlertType("error");
+    setAlertMsg(lastnameError);
+    setShowAlert(true);
+    setTimeout(() => setShowAlert(false), 5000);
+    return;
+  }
+  
+  if (birthdayError) {
+    setAlertType("error");
+    setAlertMsg(birthdayError);
+    setShowAlert(true);
+    setTimeout(() => setShowAlert(false), 5000);
+    return;
+  }
+  
+  if (phoneError) {
+    setAlertType("error");
+    setAlertMsg(phoneError);
+    setShowAlert(true);
+    setTimeout(() => setShowAlert(false), 5000);
+    return;
+  }
 
-      const result = await res.json();
-      if (res.ok) {
-        setAlertType("success");
-        setAlertMsg("Profile updated successfully!");
-        const updatedUser = {
+  try {
+    const res = await fetch(
+      `http://localhost:5000/api/profile/${userData.email}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      }
+    );
+
+    const result = await res.json();
+    if (res.ok) {
+      setAlertType("success");
+      setAlertMsg("Profile updated successfully!");
+      const updatedUser = {
         ...formData,
         email: userData.email,
-        };
-        sessionStorage.setItem("userData", JSON.stringify(updatedUser));
-        window.dispatchEvent(new Event("userDataUpdated"));
-        setOriginalData(formData);
-        setIsEditing(false);
-      } else {
-        setAlertType("error");
-        setAlertMsg(result.message || "Update failed");
-      }
-    } catch (err) {
-      console.error("Error saving profile:", err);
+      };
+      sessionStorage.setItem("userData", JSON.stringify(updatedUser));
+      window.dispatchEvent(new Event("userDataUpdated"));
+      setOriginalData(formData);
+      setIsEditing(false);
+    } else {
       setAlertType("error");
-      setAlertMsg("Error saving profile");
-    } finally {
-      setShowAlert(true);
-      setTimeout(() => setShowAlert(false), 3000);
+      setAlertMsg(result.message || "Update failed");
     }
-  };
+  } catch (err) {
+    console.error("Error saving profile:", err);
+    setAlertType("error");
+    setAlertMsg("Error saving profile");
+  } finally {
+    setShowAlert(true);
+    setTimeout(() => setShowAlert(false), 3000);
+  }
+};
 
   const handleCancel = () => {
     setFormData(originalData);
@@ -289,8 +386,8 @@ const ProfileSection = () => {
           </div>
 
           <h2 className="mt-4 text-xl text-[#272343] font-bold">
-            {formData.firstname && formData.lastname
-              ? `${formData.firstname} ${formData.lastname}`
+            {formData.firstname
+              ? `${formData.firstname}${formData.lastname ? ' ' + formData.lastname : ''}`
               : userData?.name || "Your Name"}
           </h2>
           <p className="text-sm text-[#272343] font-semibold">
@@ -367,6 +464,7 @@ const ProfileSection = () => {
                 type="date"
                 name="birthday"
                 value={formData.birthday}
+                max={new Date(new Date().setFullYear(new Date().getFullYear() - 16)).toISOString().split('T')[0]}
                 onChange={handleChange}
                 disabled={!isEditing}
                 className={inputClassName}
@@ -392,9 +490,10 @@ const ProfileSection = () => {
                 type="tel"
                 name="phone"
                 value={formData.phone}
+                maxLength="13"
                 onChange={handleChange}
                 disabled={!isEditing}
-                placeholder="e.g., +63 912 345 6789"
+                placeholder="09123456789 or +639123456789"
                 className={inputClassName}
               />
             </div>

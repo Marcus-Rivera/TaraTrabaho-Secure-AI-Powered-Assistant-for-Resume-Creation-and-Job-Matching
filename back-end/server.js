@@ -2090,7 +2090,7 @@ app.post("/api/auth/google", async (req, res) => {
             firstname, lastname, username, email, google_id, 
             verified, role, status, password_hash
           )
-          VALUES (?, ?, ?, ?, ?, 1, 'job_seeker', 'active', '')
+          VALUES (?, ?, ?, ?, ?, 1, 'job_seeker', 'approved', '')
         `;
 
         await new Promise((resolve, reject) => {
@@ -2453,6 +2453,91 @@ app.post("/api/check-auth-method", (req, res) => {
       isGoogleAccount: isGoogleOnly,
       exists: true 
     });
+  });
+});
+
+
+// ============================================================================
+// ADMIN SAVED JOBS ENDPOINTS
+// ============================================================================
+
+// GET admin's saved jobs
+app.get('/api/admin-saved-jobs/:userId', (req, res) => {
+  const { userId } = req.params;
+  
+  console.log('📥 Fetching saved jobs for user:', userId);
+  
+  const query = `
+    SELECT saved_job_id, job_id, saved_at
+    FROM admin_saved_jobs
+    WHERE user_id = ?
+    ORDER BY saved_at DESC
+  `;
+  
+  db.all(query, [userId], (err, rows) => {
+    if (err) {
+      console.error('❌ Error fetching admin saved jobs:', err);
+      return res.status(500).json({ error: 'Failed to fetch saved jobs' });
+    }
+    
+    console.log('✅ Found saved jobs:', rows);
+    res.json({ success: true, savedJobs: rows });
+  });
+});
+
+// SAVE a job (admin)
+app.post('/api/admin-saved-jobs', (req, res) => {
+  const { userId, jobId } = req.body;
+  
+  if (!userId || !jobId) {
+    return res.status(400).json({ error: 'userId and jobId are required' });
+  }
+  
+  console.log('💾 Saving job:', jobId, 'for user:', userId);
+  
+  const query = `
+    INSERT INTO admin_saved_jobs (user_id, job_id)
+    VALUES (?, ?)
+  `;
+  
+  db.run(query, [userId, jobId], function(err) {
+    if (err) {
+      if (err.message.includes('UNIQUE constraint')) {
+        return res.status(400).json({ error: 'Job already saved' });
+      }
+      console.error('❌ Error saving job:', err);
+      return res.status(500).json({ error: 'Failed to save job' });
+    }
+    
+    console.log('✅ Job saved successfully with ID:', this.lastID);
+    res.json({ 
+      success: true, 
+      message: 'Job saved successfully',
+      savedJobId: this.lastID
+    });
+  });
+});
+
+// UNSAVE a job (admin)
+app.delete('/api/admin-saved-jobs/:userId/:jobId', (req, res) => {
+  const { userId, jobId } = req.params;
+  
+  console.log('🗑️ Unsaving job:', jobId, 'for user:', userId);
+  
+  const query = 'DELETE FROM admin_saved_jobs WHERE user_id = ? AND job_id = ?';
+  
+  db.run(query, [userId, jobId], function(err) {
+    if (err) {
+      console.error('❌ Error unsaving job:', err);
+      return res.status(500).json({ error: 'Failed to unsave job' });
+    }
+    
+    if (this.changes === 0) {
+      return res.status(404).json({ error: 'Saved job not found' });
+    }
+    
+    console.log('✅ Job unsaved successfully');
+    res.json({ success: true, message: 'Job unsaved successfully' });
   });
 });
 // ============================================================================
