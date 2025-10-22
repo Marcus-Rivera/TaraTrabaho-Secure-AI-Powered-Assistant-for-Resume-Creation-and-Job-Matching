@@ -1,12 +1,15 @@
 import { useState } from "react";
 import bg from './assets/BG.png';
 import Alert from '@mui/material/Alert';
+import CircularProgress from '@mui/material/CircularProgress';
 import { useNavigate } from "react-router-dom";
 
 export default function ForgetPasswordPage() {
   const [email, setEmail] = useState("");
   const [errors, setErrors] = useState({});
   const [alertMessage, setAlertMessage] = useState("");
+  const [alertSeverity, setAlertSeverity] = useState("info");
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
 
   const validateForm = () => {
@@ -27,12 +30,40 @@ export default function ForgetPasswordPage() {
     e.preventDefault();
 
     if (!validateForm()) {
+      setAlertSeverity("error");
       setAlertMessage("Please enter a valid email address");
       return;
     }
 
+    setIsLoading(true);
+
     try {
-      // Example API call for password reset
+      // First check if this is a Google account
+      const checkResponse = await fetch(`http://localhost:5000/api/check-auth-method`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email })
+      });
+
+      const checkData = await checkResponse.json();
+
+      // Check if email doesn't exist
+      if (!checkData.exists) {
+        setAlertSeverity("error");
+        setAlertMessage("No account found with this email address. Please check your email or sign up.");
+        setIsLoading(false);
+        return;
+      }
+
+      // Check if it's a Google account
+      if (checkData.isGoogleAccount) {
+        setAlertSeverity("warning");
+        setAlertMessage("This account uses Google Sign-In. Please log in with Google instead of resetting your password.");
+        setIsLoading(false);
+        return;
+      }
+
+      // Proceed with password reset
       const response = await fetch("http://localhost:5000/api/forget-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -42,14 +73,23 @@ export default function ForgetPasswordPage() {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        setAlertMessage("Password reset instructions have been sent to your email.");
-        setTimeout(() => navigate("/login"), 3000); // redirect after 3s
+        setAlertSeverity("success");
+        setAlertMessage("If this email exists, a reset link has been sent. Please check your inbox.");
+        // Clear the email field
+        setEmail("");
+        setErrors({});
+        // Optional: redirect after showing message
+        setTimeout(() => navigate("/login"), 5000);
       } else {
-        setAlertMessage("Email not found.");
+        setAlertSeverity("error");
+        setAlertMessage(data.message || "Failed to send reset email. Please try again.");
       }
     } catch (error) {
       console.error("Forget password error:", error);
-      setAlertMessage("Server error. Try again later.");
+      setAlertSeverity("error");
+      setAlertMessage("Server error. Please try again later.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -61,15 +101,17 @@ export default function ForgetPasswordPage() {
       {/* Alert */}
       {alertMessage && (
         <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-lg">
-          <Alert severity="info">{alertMessage}</Alert>
+          <Alert severity={alertSeverity} onClose={() => setAlertMessage("")}>
+            {alertMessage}
+          </Alert>
         </div>
       )}
 
       <div className="flex w-full lg:w-2/3 items-center justify-center p-7">
         <div className="w-full max-w-md rounded-4xl bg-[#FFE660] p-8 shadow-lg">
-          <h2 className="mb-6 text-center text-4xl font-bold text-[#272343]">Forget Password</h2>
+          <h2 className="mb-6 text-center text-4xl font-bold text-[#272343]">Forgot Password</h2>
           <p className="text-center text-sm text-gray-600 mb-6">
-            Enter your email address to reset your password.
+            Enter your email address and we'll send you instructions to reset your password.
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -80,11 +122,12 @@ export default function ForgetPasswordPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                disabled={isLoading}
                 className={`mt-1 w-full rounded-lg border-[#272343] border p-2 focus:outline-none focus:ring-2 bg-[#BAE8E8] ${
                   errors.email
                     ? "border-red-500 focus:ring-red-200"
-                    : " focus:border-blue-500 focus:ring-blue-200"
-                }`}
+                    : "focus:border-blue-500 focus:ring-blue-200"
+                } ${isLoading ? "opacity-50 cursor-not-allowed" : ""}`}
                 placeholder="Enter your email"
               />
               {errors.email && <p className="mt-1 text-sm text-red-500">{errors.email}</p>}
@@ -93,9 +136,19 @@ export default function ForgetPasswordPage() {
             {/* Submit */}
             <button
               type="submit"
-              className="block px-6 mx-auto rounded-md bg-[#2C275C] py-2 font-semibold text-white transition hover:bg-[#1b163e] cursor-pointer"
+              disabled={isLoading}
+              className={`block px-6 mx-auto rounded-md bg-[#2C275C] py-2 font-semibold text-white transition hover:bg-[#1b163e] ${
+                isLoading ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
+              } flex items-center justify-center gap-2 min-w-[180px]`}
             >
-              Send Reset Link
+              {isLoading ? (
+                <>
+                  <CircularProgress size={20} color="inherit" />
+                  <span>Sending...</span>
+                </>
+              ) : (
+                "Send Reset Link"
+              )}
             </button>
           </form>
 
@@ -118,7 +171,7 @@ export default function ForgetPasswordPage() {
               Trabaho!
             </span>
           </h1>
-          <p className="text-lg mb-4">We’ll send instructions to reset your password.</p>
+          <p className="text-lg mb-4">We'll send instructions to reset your password.</p>
         </div>
       </div>
     </div>

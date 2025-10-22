@@ -10,6 +10,9 @@ const nodemailer = require("nodemailer");
 const crypto = require("crypto");
 const otpStore = {};
 
+// Reset PW
+const resetTokenStore = {};
+
 // Test for Resume Saver
 const multer = require('multer');
 const path = require('path');
@@ -106,7 +109,7 @@ app.post("/api/login", loginLimiter, async (req, res) => {
   }
 
   // Retrieve user record based on email
-  const query = `SELECT * FROM user WHERE email = ?`;
+  const query = `SELECT * FROM user WHERE LOWER(email) = LOWER(?)`;
   db.get(query, [email], async (err, user) => {
     if (err) {
       console.error("DB Error:", err);
@@ -200,7 +203,7 @@ app.post("/api/auto-login", (req, res) => {
   }
 
   // Retrieve user from database
-  const query = `SELECT * FROM user WHERE email = ? AND verified = 1`;
+  const query = `SELECT * FROM user WHERE LOWER(email) = LOWER(?) AND verified = 1`;
   db.get(query, [email], (err, user) => {
     if (err) {
       console.error("DB Error:", err);
@@ -241,26 +244,28 @@ app.post("/api/verify-otp", (req, res) => {
     return res.status(400).json({ message: "Email and OTP are required" });
   }
 
+  const normalizedEmail = email.toLowerCase().trim();
+
   // Check OTP
-  const otpRecord = otpStore[email];
+  const otpRecord = otpStore[normalizedEmail];
   if (!otpRecord) return res.status(400).json({ success: false, message: "No OTP sent for this email" });
   
   if (Date.now() > otpRecord.expires) {
-    delete otpStore[email];
+    delete otpStore[normalizedEmail];  // ✅ FIXED
     return res.status(400).json({ success: false, message: "OTP expired" });
   }
   
   if (otpRecord.otp !== otp) return res.status(400).json({ success: false, message: "Invalid OTP" });
 
   // Check if temporary user data exists
-  const tempUser = tempUserStore[email];
+  const tempUser = tempUserStore[normalizedEmail];
   if (!tempUser) {
     return res.status(400).json({ success: false, message: "Signup session expired. Please sign up again." });
   }
 
   // Check if temporary data expired
   if (Date.now() > tempUser.expires) {
-    delete tempUserStore[email];
+    delete tempUserStore[normalizedEmail];  // ✅ FIXED
     return res.status(400).json({ success: false, message: "Signup session expired. Please sign up again." });
   }
 
@@ -292,9 +297,9 @@ app.post("/api/verify-otp", (req, res) => {
         return res.status(500).json({ success: false, message: "Database error during registration" });
       }
 
-      // Clean up temporary data
-      delete otpStore[email];
-      delete tempUserStore[email];
+      // ✅ Clean up temporary data (ONLY ONCE with normalizedEmail)
+      delete otpStore[normalizedEmail];
+      delete tempUserStore[normalizedEmail];
 
       res.json({ 
         success: true, 
@@ -329,12 +334,14 @@ app.post("/api/verifyToken", (req, res) => {
 app.post("/api/signup", async (req, res) => {
   const { firstname, lastname, birthday, gender, username, email, phone, password } = req.body;
 
+  const normalizedEmail = email.toLowerCase().trim();
+
   if (!email || !password) {
     return res.status(400).json({ status: "error", message: "Email and password are required" });
   }
 
   // Check if email already exists in database (permanent users)
-  const checkQuery = `SELECT * FROM user WHERE email = ?`;
+  const checkQuery = `SELECT * FROM user WHERE LOWER(email) = LOWER(?)`;
   db.get(checkQuery, [email], async (err, existingUser) => {
     if (err) {
       console.error("DB Error:", err);
@@ -358,14 +365,15 @@ app.post("/api/signup", async (req, res) => {
       const password_hash = await bcrypt.hash(password, 10);
       const role = "job_seeker";
 
+      const normalizedEmail = email.toLowerCase().trim();
       // Store user data temporarily (expires in 10 minutes)
-      tempUserStore[email] = {
+      tempUserStore[normalizedEmail] = {
         firstname,
         lastname,
         birthday,
         gender,
         username,
-        email,
+        email: normalizedEmail,
         phone,
         password_hash,
         role,
@@ -374,7 +382,7 @@ app.post("/api/signup", async (req, res) => {
 
       // Generate 4-digit OTP
       const otp = crypto.randomInt(1000, 9999).toString();
-      otpStore[email] = { otp, expires: Date.now() + 5 * 60 * 1000 };
+      otpStore[normalizedEmail] = { otp, expires: Date.now() + 5 * 60 * 1000 };
       const transporter_job = nodemailer.createTransport({
         service: "gmail",
         auth: {
@@ -387,7 +395,7 @@ app.post("/api/signup", async (req, res) => {
       try {
         await transporter_job.sendMail({
           from: '"TaraTrabaho Job" <taratrabaho0@gmail.com>',
-          to: email,
+          to: normalizedEmail,
           subject: "Your TaraTrabaho OTP Code",
           text: `Your OTP code is ${otp}. It will expire in 5 minutes.`,
         });
@@ -395,7 +403,7 @@ app.post("/api/signup", async (req, res) => {
         res.json({
           status: "pending",
           message: "Please verify your email via OTP to complete registration.",
-          email,
+          email: normalizedEmail,
         });
       } catch (mailErr) {
         console.error("Error sending OTP email:", mailErr);
@@ -2030,7 +2038,7 @@ app.post("/api/auth/google", async (req, res) => {
     }
 
     // Check if user exists
-    const checkQuery = 'SELECT * FROM user WHERE email = ?';
+    const checkQuery = 'SELECT * FROM user WHERE LOWER(email) = LOWER(?)';
     
     db.get(checkQuery, [email], async (err, existingUser) => {
       if (err) {
@@ -2195,8 +2203,258 @@ app.put("/api/users/:user_id/role", (req, res) => {
   });
 });
 
+// ============================================================================
+// FORGET PASSWORD - Send Reset Email
+// ============================================================================
+app.post("/api/forget-password", async (req, res) => {
+  const { email } = req.body;
 
+  if (!email) {
+    return res.status(400).json({ success: false, message: "Email is required" });
+  }
 
+  // Check if user exists
+  const query = `SELECT * FROM user WHERE LOWER(email) = LOWER(?)`;
+  db.get(query, [email], async (err, user) => {
+    if (err) {
+      console.error("DB Error:", err);
+      return res.status(500).json({ success: false, message: "Database error" });
+    }
+
+    if (!user) {
+      // Don't reveal if email exists (security best practice)
+      return res.json({ 
+        success: true, 
+        message: "If this email exists, a reset link has been sent." 
+      });
+    }
+
+    // Check if this is a Google-only account
+    if (user.google_id && (!user.password_hash || user.password_hash === '')) {
+      return res.json({ 
+        success: true, 
+        message: "If this email exists, a reset link has been sent." 
+        // Don't reveal it's a Google account
+      });
+    }
+
+    // Generate reset token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    resetTokenStore[resetToken] = {
+      email: user.email,
+      expires: Date.now() + 30 * 60 * 1000 // 30 minutes
+    };
+
+    // Create reset link
+    const resetLink = `http://localhost:5173/reset-password/${resetToken}`;
+
+    // Send email
+    const transporter_reset = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: "taratrabaho0@gmail.com",
+        pass: "jkdv bdfk xryh fvql",
+      },
+    });
+
+    try {
+      await transporter_reset.sendMail({
+        from: '"TaraTrabaho" <taratrabaho0@gmail.com>',
+        to: email,
+        subject: "Reset Your Password - TaraTrabaho",
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <div style="background: linear-gradient(135deg, #BAE8E8, #FBDA23); padding: 20px; border-radius: 10px 10px 0 0;">
+              <h2 style="color: #272343; margin: 0;">🔐 Password Reset Request</h2>
+            </div>
+            
+            <div style="background: white; padding: 20px; border: 1px solid #ddd;">
+              <p>Hi <strong>${user.firstname}</strong>,</p>
+              
+              <p>We received a request to reset your password for your TaraTrabaho account.</p>
+              
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="${resetLink}" 
+                   style="background: #2C275C; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
+                  Reset Password
+                </a>
+              </div>
+              
+              <p style="color: #666; font-size: 14px;">
+                Or copy and paste this link in your browser:<br>
+                <a href="${resetLink}" style="color: #2C275C; word-break: break-all;">${resetLink}</a>
+              </p>
+              
+              <p style="color: #d32f2f; font-weight: bold; margin-top: 20px;">
+                ⚠️ This link will expire in 30 minutes.
+              </p>
+              
+              <p style="color: #666; font-size: 14px; margin-top: 20px;">
+                If you didn't request this, please ignore this email. Your password won't change.
+              </p>
+            </div>
+          </div>
+        `
+      });
+
+      res.json({ 
+        success: true, 
+        message: "If this email exists, a reset link has been sent." 
+      });
+
+    } catch (mailErr) {
+      console.error("Error sending reset email:", mailErr);
+      res.status(500).json({ 
+        success: false, 
+        message: "Failed to send reset email. Please try again." 
+      });
+    }
+  });
+});
+
+// ============================================================================
+// VERIFY RESET TOKEN
+// ============================================================================
+app.get("/api/verify-reset-token/:token", (req, res) => {
+  const { token } = req.params;
+
+  const tokenData = resetTokenStore[token];
+  
+  if (!tokenData) {
+    return res.status(400).json({ 
+      valid: false, 
+      message: "Invalid or expired reset link" 
+    });
+  }
+
+  if (Date.now() > tokenData.expires) {
+    delete resetTokenStore[token];
+    return res.status(400).json({ 
+      valid: false, 
+      message: "Reset link has expired" 
+    });
+  }
+
+  res.json({ 
+    valid: true, 
+    email: tokenData.email 
+  });
+});
+
+// ============================================================================
+// RESET PASSWORD
+// ============================================================================
+app.post("/api/reset-password", async (req, res) => {
+  const { token, password } = req.body;
+
+  if (!token || !password) {
+    return res.status(400).json({ 
+      success: false, 
+      message: "Token and password are required" 
+    });
+  }
+
+  if (password.length < 6) {
+    return res.status(400).json({ 
+      success: false, 
+      message: "Password must be at least 6 characters" 
+    });
+  }
+
+  const tokenData = resetTokenStore[token];
+  
+  if (!tokenData) {
+    return res.status(400).json({ 
+      success: false, 
+      message: "Invalid or expired reset link" 
+    });
+  }
+
+  if (Date.now() > tokenData.expires) {
+    delete resetTokenStore[token];
+    return res.status(400).json({ 
+      success: false, 
+      message: "Reset link has expired" 
+    });
+  }
+
+  try {
+    // Hash new password
+    const password_hash = await bcrypt.hash(password, 10);
+
+    // Update password in database
+    const query = `UPDATE user SET password_hash = ? WHERE email = ?`;
+    
+    db.run(query, [password_hash, tokenData.email], function(err) {
+      if (err) {
+        console.error("Error updating password:", err);
+        return res.status(500).json({ 
+          success: false, 
+          message: "Failed to reset password" 
+        });
+      }
+
+      if (this.changes === 0) {
+        return res.status(404).json({ 
+          success: false, 
+          message: "User not found" 
+        });
+      }
+
+      // Delete used token
+      delete resetTokenStore[token];
+
+      res.json({ 
+        success: true, 
+        message: "Password reset successfully!" 
+      });
+    });
+
+  } catch (error) {
+    console.error("Reset password error:", error);
+    res.status(500).json({ 
+      success: false, 
+      message: "Server error" 
+    });
+  }
+});
+
+// ============================================================================
+// CHECK AUTH METHOD - Determine if account uses Google or Email/Password
+// ============================================================================
+app.post("/api/check-auth-method", (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ error: "Email is required" });
+  }
+
+  // Use LOWER() for case-insensitive comparison
+  const query = `SELECT google_id, password_hash FROM user WHERE LOWER(email) = LOWER(?)`;
+  
+  db.get(query, [email], (err, user) => {
+    if (err) {
+      console.error("DB Error:", err);
+      return res.status(500).json({ error: "Database error" });
+    }
+
+    // Account doesn't exist
+    if (!user) {
+      return res.json({ 
+        isGoogleAccount: false,
+        exists: false 
+      });
+    }
+
+    // Check if it's a Google-only account (has google_id but no password)
+    const isGoogleOnly = user.google_id && (!user.password_hash || user.password_hash === '');
+
+    res.json({ 
+      isGoogleAccount: isGoogleOnly,
+      exists: true 
+    });
+  });
+});
 // ============================================================================
 // SERVER START
 // ============================================================================

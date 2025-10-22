@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import bg from "./assets/BG.png";
 import Alert from "@mui/material/Alert";
 import { useNavigate, useParams } from "react-router-dom";
@@ -8,8 +8,44 @@ export default function ResetPasswordPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [errors, setErrors] = useState({});
   const [alertMessage, setAlertMessage] = useState("");
+  const [alertSeverity, setAlertSeverity] = useState("info");
+  const [isLoading, setIsLoading] = useState(true);
+  const [tokenValid, setTokenValid] = useState(false);
   const navigate = useNavigate();
-  const { token } = useParams(); // optional if your reset link has a token
+  const { token } = useParams();
+
+  // Verify token on component mount
+  useEffect(() => {
+    const verifyToken = async () => {
+      if (!token) {
+        setAlertSeverity("error");
+        setAlertMessage("Invalid reset link. No token provided.");
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const response = await fetch(`http://localhost:5000/api/verify-reset-token/${token}`);
+        const data = await response.json();
+
+        if (response.ok && data.valid) {
+          setTokenValid(true);
+        } else {
+          setAlertSeverity("error");
+          setAlertMessage(data.message || "Invalid or expired reset link.");
+          setTimeout(() => navigate("/forget-password"), 3000);
+        }
+      } catch (error) {
+        console.error("Token verification error:", error);
+        setAlertSeverity("error");
+        setAlertMessage("Failed to verify reset link. Please try again.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    verifyToken();
+  }, [token, navigate]);
 
   const validateForm = () => {
     let newErrors = {};
@@ -34,12 +70,12 @@ export default function ResetPasswordPage() {
     e.preventDefault();
 
     if (!validateForm()) {
+      setAlertSeverity("error");
       setAlertMessage("Please correct the errors before proceeding");
       return;
     }
 
     try {
-      // Example API call for resetting password
       const response = await fetch("http://localhost:5000/api/reset-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -49,16 +85,56 @@ export default function ResetPasswordPage() {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        setAlertMessage("Your password has been reset successfully!");
+        setAlertSeverity("success");
+        setAlertMessage("Your password has been reset successfully! Redirecting to login...");
+        setPassword("");
+        setConfirmPassword("");
+        setErrors({});
         setTimeout(() => navigate("/login"), 3000);
       } else {
-        setAlertMessage("Invalid or expired reset link.");
+        setAlertSeverity("error");
+        setAlertMessage(data.message || "Invalid or expired reset link.");
       }
     } catch (error) {
       console.error("Reset password error:", error);
-      setAlertMessage("Server error. Try again later.");
+      setAlertSeverity("error");
+      setAlertMessage("Server error. Please try again later.");
     }
   };
+
+  // Show loading state while verifying token
+  if (isLoading) {
+    return (
+      <div
+        className="flex items-center justify-center min-h-screen bg-cover"
+        style={{ backgroundImage: `url(${bg})` }}
+      >
+        <div className="text-center bg-white p-8 rounded-lg shadow-lg">
+          <p className="text-xl text-[#272343]">Verifying reset link...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't show form if token is invalid
+  if (!tokenValid) {
+    return (
+      <div
+        className="flex items-center justify-center min-h-screen bg-cover"
+        style={{ backgroundImage: `url(${bg})` }}
+      >
+        <div className="text-center bg-white p-8 rounded-lg shadow-lg max-w-md">
+          <Alert severity="error">{alertMessage}</Alert>
+          <button
+            onClick={() => navigate("/forget-password")}
+            className="mt-4 px-6 rounded-md bg-[#2C275C] py-2 font-semibold text-white transition hover:bg-[#1b163e] cursor-pointer"
+          >
+            Request New Link
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -68,7 +144,9 @@ export default function ResetPasswordPage() {
       {/* Alert */}
       {alertMessage && (
         <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-lg">
-          <Alert severity="info">{alertMessage}</Alert>
+          <Alert severity={alertSeverity} onClose={() => setAlertMessage("")}>
+            {alertMessage}
+          </Alert>
         </div>
       )}
 

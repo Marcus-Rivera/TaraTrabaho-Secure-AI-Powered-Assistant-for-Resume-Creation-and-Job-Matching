@@ -10,8 +10,8 @@ import AboutUsPage from "./AboutUsPage";
 import ManageUser from "./ManageUser";
 import JobListing from "./JobListing";
 import Faqs from "./Faqs";
-import Forget from "./ForgetPage";
-import Reset from "./ResetPassword";
+import Forget from "./ForgetPasswordPage";
+import Reset from "./ResetPasswordPage";
 import Report from "./Report";
 
 // Import your sections
@@ -20,6 +20,9 @@ import DashboardSection from "./DashboardSection";
 import CareerBotSection from "./CareerBotSection";
 import ResumeSection from "./ResumeSection";
 import JobListingsSection from "./JobListingsSection";
+
+import ForgetPasswordPage from './ForgetPasswordPage';
+import ResetPasswordPage from './ResetPasswordPage';
 
 function App() {
   return (
@@ -32,9 +35,10 @@ function App() {
         <Route path="/otp" element={<OtpPage />} />
         <Route path="/about" element={<AboutUsPage />} />
         <Route path="/faqs" element={<Faqs />} />
-        <Route path="/forget" element={<Forget />} />
-        <Route path="/reset" element={<Reset />} />
+        <Route path="/forget" element={<ForgetPasswordPage />} />
         <Route path="/report" element={<Report />} />
+        <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
+
 
         {/* User Dashboard (TaraTrabaho) */}
         <Route path="/taratrabaho" element={<Home />}>
