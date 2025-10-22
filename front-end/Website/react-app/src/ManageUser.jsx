@@ -1,17 +1,72 @@
 import React, { useState, useEffect } from "react";
+import {
+  Box,
+  Container,
+  Typography,
+  TextField,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Button,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  Chip,
+  IconButton,
+  Alert,
+  Snackbar,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+  Tabs,
+  Tab,
+  Card,
+  CardContent,
+  Grid,
+  InputAdornment,
+  useMediaQuery,
+  useTheme,
+  Tooltip,
+} from "@mui/material";
+import {
+  Search as SearchIcon,
+  Star as StarIcon,
+  StarBorder as StarBorderIcon,
+  FilterList as FilterListIcon,
+} from "@mui/icons-material";
 
 const ManageUser = () => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const isTablet = useMediaQuery(theme.breakpoints.down("md"));
+
   const [users, setUsers] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("All Status");
-  const [successMessage, setSuccessMessage] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [roleFilter, setRoleFilter] = useState("all");
   const [savedUsers, setSavedUsers] = useState([]);
-  const [activeTab, setActiveTab] = useState("all"); // "all" or "saved"
+  const [activeTab, setActiveTab] = useState(0);
+  const [confirmDialog, setConfirmDialog] = useState({
+    open: false,
+    userId: null,
+    newRole: null,
+  });
+  const [notification, setNotification] = useState({
+    open: false,
+    message: "",
+    severity: "success",
+  });
 
-  // Fetch users from backend database
   useEffect(() => {
     const fetchUsers = async () => {
       try {
@@ -21,15 +76,13 @@ const ManageUser = () => {
           throw new Error("Failed to fetch users");
         }
         const data = await response.json();
-        
-        // Load saved users from localStorage
-        const saved = JSON.parse(localStorage.getItem('savedUsers') || '[]');
+
+        const saved = JSON.parse(localStorage.getItem("savedUsers") || "[]");
         setSavedUsers(saved);
 
-        // Add isSaved property to users
-        const usersWithSavedStatus = data.map(user => ({
+        const usersWithSavedStatus = data.map((user) => ({
           ...user,
-          isSaved: saved.some(savedUser => savedUser.user_id === user.user_id)
+          isSaved: saved.some((savedUser) => savedUser.user_id === user.user_id),
         }));
 
         setUsers(usersWithSavedStatus);
@@ -45,352 +98,521 @@ const ManageUser = () => {
     fetchUsers();
   }, []);
 
-  // Filter users based on search, filters, and active tab
   useEffect(() => {
     let filtered = users;
 
-    // Tab filter
-    if (activeTab === "saved") {
-      filtered = filtered.filter(user => user.isSaved);
+    if (activeTab === 1) {
+      filtered = filtered.filter((user) => user.isSaved);
     }
 
-    // Search filter
     if (searchTerm) {
-      filtered = filtered.filter(user =>
-        user.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        user.email.toLowerCase().includes(searchTerm.toLowerCase())
+      filtered = filtered.filter(
+        (user) =>
+          user.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          user.email.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
-    // Status filter
-    if (statusFilter !== "All Status") {
-      filtered = filtered.filter(user => user.status === statusFilter);
+    if (statusFilter !== "all") {
+      filtered = filtered.filter((user) => user.status === statusFilter);
+    }
+
+    if (roleFilter !== "all") {
+      filtered = filtered.filter((user) => user.role === roleFilter);
     }
 
     setFilteredUsers(filtered);
-  }, [searchTerm, statusFilter, users, activeTab]);
+  }, [searchTerm, statusFilter, roleFilter, users, activeTab]);
 
-  // Toggle save user
+  const showNotification = (message, severity = "success") => {
+    setNotification({ open: true, message, severity });
+  };
+
+  const handleCloseNotification = () => {
+    setNotification({ ...notification, open: false });
+  };
+
   const toggleSaveUser = (userId) => {
-    const user = users.find(u => u.user_id === userId);
+    const user = users.find((u) => u.user_id === userId);
     if (!user) return;
 
     let updatedSavedUsers;
-    const isCurrentlySaved = savedUsers.some(savedUser => savedUser.user_id === userId);
+    const isCurrentlySaved = savedUsers.some(
+      (savedUser) => savedUser.user_id === userId
+    );
 
     if (isCurrentlySaved) {
-      updatedSavedUsers = savedUsers.filter(savedUser => savedUser.user_id !== userId);
+      updatedSavedUsers = savedUsers.filter(
+        (savedUser) => savedUser.user_id !== userId
+      );
     } else {
       updatedSavedUsers = [...savedUsers, user];
     }
 
     setSavedUsers(updatedSavedUsers);
-    localStorage.setItem('savedUsers', JSON.stringify(updatedSavedUsers));
+    localStorage.setItem("savedUsers", JSON.stringify(updatedSavedUsers));
 
-    // Update users with saved status
-    const updatedUsers = users.map(user =>
-      user.user_id === userId
-        ? { ...user, isSaved: !isCurrentlySaved }
-        : user
+    const updatedUsers = users.map((user) =>
+      user.user_id === userId ? { ...user, isSaved: !isCurrentlySaved } : user
     );
-    
-    setUsers(updatedUsers);
-    
-    // Update filtered users based on current tab
-    if (activeTab === "saved" && isCurrentlySaved) {
-      // If unsaving from saved tab, remove from filtered view
-      setFilteredUsers(prev => prev.filter(user => user.user_id !== userId));
-    } else {
-      setFilteredUsers(updatedUsers.filter(user => {
-        if (activeTab === "saved") return user.isSaved;
-        return true;
-      }));
-    }
 
-    setSuccessMessage(isCurrentlySaved ? "User removed from saved!" : "User saved successfully!");
-    setTimeout(() => setSuccessMessage(""), 3000);
+    setUsers(updatedUsers);
+
+    showNotification(
+      isCurrentlySaved ? "User removed from saved" : "User saved successfully"
+    );
   };
 
-  // Handle action change
-  const handleActionChange = (userId, newAction) => {
+  const handleStatusChange = (userId, newStatus) => {
     setUsers((prevUsers) =>
       prevUsers.map((user) =>
-        user.user_id === userId ? { ...user, action: newAction } : user
+        user.user_id === userId ? { ...user, status: newStatus } : user
       )
     );
 
-    // Update user status in backend (using newAction as the status)
     fetch(`http://localhost:5000/api/users/${userId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: newAction }),
+      body: JSON.stringify({ status: newStatus }),
     })
-    .then((response) => {
-      if (!response.ok) {
-        throw new Error('Failed to update user');
-      }
-      // After successful update, sync the status with action
-      setUsers((prevUsers) =>
-        prevUsers.map((user) =>
-          user.user_id === userId ? { ...user, status: newAction } : user
-        )
-      );
-      setSuccessMessage("User status updated successfully!");
-      setTimeout(() => setSuccessMessage(""), 3000);
-    })
-    .catch((err) => {
-      console.error("Error updating user:", err);
-      setError("Failed to update user status. Please try again.");
-    });
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Failed to update user");
+        }
+        showNotification("User status updated successfully");
+      })
+      .catch((err) => {
+        console.error("Error updating user:", err);
+        showNotification("Failed to update user status", "error");
+      });
   };
 
-  // Clear all filters
+  const handleRoleChange = (userId, newRole) => {
+    if (newRole === "admin") {
+      setConfirmDialog({ open: true, userId, newRole });
+    } else {
+      proceedWithRoleChange(userId, newRole);
+    }
+  };
+
+  const proceedWithRoleChange = (userId, newRole) => {
+    fetch(`http://localhost:5000/api/users/${userId}/role`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role: newRole }),
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Failed to update user role");
+        }
+        setUsers((prevUsers) =>
+          prevUsers.map((user) =>
+            user.user_id === userId ? { ...user, role: newRole } : user
+          )
+        );
+        showNotification(`User role updated to ${newRole}`);
+      })
+      .catch((err) => {
+        console.error("Error updating user role:", err);
+        showNotification("Failed to update user role", "error");
+      });
+  };
+
+  const handleConfirmRoleChange = () => {
+    proceedWithRoleChange(confirmDialog.userId, confirmDialog.newRole);
+    setConfirmDialog({ open: false, userId: null, newRole: null });
+  };
+
+  const handleCancelRoleChange = () => {
+    setConfirmDialog({ open: false, userId: null, newRole: null });
+  };
+
   const clearFilters = () => {
     setSearchTerm("");
-    setStatusFilter("All Status");
+    setStatusFilter("all");
+    setRoleFilter("all");
   };
 
-  // Switch between All Users and Saved Users tabs
-  const switchTab = (tab) => {
-    setActiveTab(tab);
+  const getStatusColor = (status) => {
+    switch (status) {
+      case "approved":
+        return "success";
+      case "suspended":
+        return "error";
+      case "pending":
+        return "warning";
+      default:
+        return "default";
+    }
+  };
+
+  const getRoleColor = (role) => {
+    return role === "admin" ? "secondary" : "primary";
   };
 
   if (loading) {
     return (
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-[30px]">
-        <div className="text-center py-10 text-gray-600">Loading users...</div>
-      </div>
+      <Container maxWidth="xl" sx={{ py: 4 }}>
+        <Typography variant="h6" color="text.secondary" textAlign="center">
+          Loading users...
+        </Typography>
+      </Container>
     );
   }
 
   if (error) {
     return (
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-[30px]">
-        <div className="text-center py-10 text-red-600 font-medium">{error}</div>
-      </div>
+      <Container maxWidth="xl" sx={{ py: 4 }}>
+        <Alert severity="error">{error}</Alert>
+      </Container>
     );
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-[30px]">
-      <h1 className="text-2xl font-bold text-gray-800 mb-6">Manage Users</h1>
+    <Container maxWidth="xl" sx={{ py: 4 }}>
+      <Typography variant="h4" fontWeight="bold" color="text.primary" mb={3}>
+        Manage Users
+      </Typography>
 
-      {/* Success Message */}
-      {successMessage && (
-        <div className="mb-4 p-3 bg-green-100 text-green-800 rounded-md">
-          {successMessage}
-        </div>
-      )}
+      <Snackbar
+        open={notification.open}
+        autoHideDuration={3000}
+        onClose={handleCloseNotification}
+        anchorOrigin={{ vertical: "top", horizontal: "right" }}
+      >
+        <Alert
+          onClose={handleCloseNotification}
+          severity={notification.severity}
+          sx={{ width: "100%" }}
+          variant="filled"
+        >
+          {notification.message}
+        </Alert>
+      </Snackbar>
 
-      {/* Search and Filter Section */}
-      <div className="bg-white p-6 rounded-lg shadow-md mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          {/* Search Input */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Search users...
-            </label>
-            <input
-              type="text"
+      <Paper elevation={2} sx={{ p: { xs: 2, sm: 3 }, mb: 3 }}>
+        <Grid container spacing={2} mb={2}>
+          <Grid item xs={12} md={4}>
+            <TextField
+              fullWidth
+              label="Search users"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Search by username or email..."
+              placeholder="Search by username or email"
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon color="action" />
+                  </InputAdornment>
+                ),
+              }}
+              size={isMobile ? "small" : "medium"}
             />
-          </div>
+          </Grid>
 
-          {/* Status Filter */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Status
-            </label>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="All Status">All Status</option>
-              <option value="approved">Approved</option>
-              <option value="suspended">Suspended</option>
-              <option value="pending">Pending</option>
-            </select>
-          </div>
-        </div>
+          <Grid item xs={12} sm={6} md={4}>
+            <FormControl fullWidth size={isMobile ? "small" : "medium"}>
+              <InputLabel>Status</InputLabel>
+              <Select
+                value={statusFilter}
+                label="Status"
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
+                <MenuItem value="all">All Status</MenuItem>
+                <MenuItem value="approved">Approved</MenuItem>
+                <MenuItem value="suspended">Suspended</MenuItem>
+                <MenuItem value="pending">Pending</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
 
-        {/* Results and Clear Filters */}
-        <div className="flex justify-between items-center">
-          <div className="text-gray-600">
-            {filteredUsers.length} user{filteredUsers.length !== 1 ? 's' : ''} found
-            {activeTab === "saved" && " in saved users"}
-          </div>
-          <button
+          <Grid item xs={12} sm={6} md={4}>
+            <FormControl fullWidth size={isMobile ? "small" : "medium"}>
+              <InputLabel>Role</InputLabel>
+              <Select
+                value={roleFilter}
+                label="Role"
+                onChange={(e) => setRoleFilter(e.target.value)}
+              >
+                <MenuItem value="all">All Roles</MenuItem>
+                <MenuItem value="job_seeker">Job Seeker</MenuItem>
+                <MenuItem value="admin">Admin</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+        </Grid>
+
+        <Box
+          display="flex"
+          justifyContent="space-between"
+          alignItems="center"
+          flexWrap="wrap"
+          gap={2}
+        >
+          <Typography variant="body2" color="text.secondary">
+            {filteredUsers.length} user{filteredUsers.length !== 1 ? "s" : ""}{" "}
+            found
+            {activeTab === 1 && " in saved users"}
+          </Typography>
+          <Button
+            variant="outlined"
             onClick={clearFilters}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+            startIcon={<FilterListIcon />}
+            size={isMobile ? "small" : "medium"}
           >
-            CLEAR FILTERS
-          </button>
-        </div>
-      </div>
+            Clear Filters
+          </Button>
+        </Box>
+      </Paper>
 
-      {/* Tabs */}
-      <div className="flex border-b border-gray-200 mb-6">
-        <button 
-          onClick={() => switchTab("all")}
-          className={`px-4 py-2 font-medium ${
-            activeTab === "all" 
-              ? 'text-blue-600 border-b-2 border-blue-600' 
-              : 'text-gray-500 hover:text-blue-600'
-          }`}
+      <Paper elevation={2} sx={{ mb: 3 }}>
+        <Tabs
+          value={activeTab}
+          onChange={(e, newValue) => setActiveTab(newValue)}
+          variant={isMobile ? "fullWidth" : "standard"}
+          sx={{ borderBottom: 1, borderColor: "divider" }}
         >
-          ALL USERS
-        </button>
-        <button 
-          onClick={() => switchTab("saved")}
-          className={`px-4 py-2 font-medium ${
-            activeTab === "saved" 
-              ? 'text-blue-600 border-b-2 border-blue-600' 
-              : 'text-gray-500 hover:text-blue-600'
-          }`}
-        >
-          SAVED USERS ({savedUsers.length})
-        </button>
-      </div>
+          <Tab label="All Users" />
+          <Tab label={`Saved Users (${savedUsers.length})`} />
+        </Tabs>
+      </Paper>
 
-      {/* User Cards - Mobile View */}
-      <div className="block sm:hidden space-y-4">
-        {filteredUsers.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">
-            {activeTab === "saved" ? "No saved users found" : "No users found"}
-          </div>
-        ) : (
-          filteredUsers.map((user) => (
-            <div key={user.user_id} className="bg-white shadow-md rounded-lg p-4 border border-gray-200">
-              <div className="space-y-3">
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900">{user.username}</h3>
-                    <p className="text-sm text-gray-600">{user.email}</p>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <span
-                      className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        user.status === "approved"
-                          ? "bg-green-100 text-green-800"
-                          : user.status === "Suspended"
-                          ? "bg-red-100 text-red-800"
-                          : "bg-yellow-100 text-yellow-800"
-                      }`}
-                    >
-                      {user.status}
-                    </span>
-                    <button 
-                      onClick={() => toggleSaveUser(user.user_id)}
-                      className={`p-2 rounded-full transition-colors ${
-                        user.isSaved 
-                          ? 'text-yellow-500 bg-yellow-50' 
-                          : 'text-gray-400 hover:text-yellow-500 hover:bg-gray-50'
-                      }`}
-                    >
-                      <svg className="w-5 h-5" fill={user.isSaved ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex justify-between items-center">
-                  <select
-                    value={user.action || user.status}
-                    onChange={(e) => handleActionChange(user.user_id, e.target.value)}
-                    className="block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+      {isMobile || isTablet ? (
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {filteredUsers.length === 0 ? (
+            <Paper elevation={1} sx={{ p: 4, textAlign: "center" }}>
+              <Typography color="text.secondary">
+                {activeTab === 1 ? "No saved users found" : "No users found"}
+              </Typography>
+            </Paper>
+          ) : (
+            filteredUsers.map((user) => (
+              <Card key={user.user_id} elevation={2}>
+                <CardContent>
+                  <Box
+                    display="flex"
+                    justifyContent="space-between"
+                    alignItems="flex-start"
+                    mb={2}
                   >
-                    <option value="approved">Approved</option>
-                    <option value="suspended">Suspended</option>
-                    <option value="pending">Pending</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-
-      {/* User Table - Desktop View */}
-      <div className="hidden sm:block bg-white shadow-md rounded-lg overflow-hidden border border-gray-200">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-4 py-3 lg:px-6 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Username</th>
-              <th className="px-4 py-3 lg:px-6 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-              <th className="px-4 py-3 lg:px-6 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-              <th className="px-4 py-3 lg:px-6 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-              <th className="px-4 py-3 lg:px-6 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Save</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {filteredUsers.length === 0 ? (
-              <tr>
-                <td colSpan="5" className="px-4 py-8 text-center text-gray-500">
-                  {activeTab === "saved" ? "No saved users found" : "No users found"}
-                </td>
-              </tr>
-            ) : (
-              filteredUsers.map((user) => (
-                <tr key={user.user_id} className="hover:bg-gray-50">
-                  <td className="px-4 py-4 lg:px-6 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {user.username}
-                  </td>
-                  <td className="px-4 py-4 lg:px-6 whitespace-nowrap text-sm text-gray-500">
-                    {user.email}
-                  </td>
-                  <td className="px-4 py-4 lg:px-6 whitespace-nowrap text-sm">
-                    <span
-                      className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        user.status === "approved"
-                          ? "bg-green-100 text-green-800"
-                          : user.status === "suspended"
-                          ? "bg-red-100 text-red-800"
-                          : "bg-yellow-100 text-yellow-800"
-                      }`}
-                    >
-                      {user.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-4 lg:px-6 whitespace-nowrap text-sm text-gray-500">
-                    <select
-                      value={user.action || user.status}
-                      onChange={(e) => handleActionChange(user.user_id, e.target.value)}
-                      className="block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="approved">Approved</option>
-                      <option value="suspended">Suspended</option>
-                      <option value="pending">Pending</option>
-                    </select>
-                  </td>
-                  <td className="px-4 py-4 lg:px-6 whitespace-nowrap text-sm text-gray-500">
-                    <div className="flex justify-center">
-                      <button 
+                    <Box flex={1}>
+                      <Typography variant="h6" fontWeight="bold" gutterBottom>
+                        {user.username}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" mb={1}>
+                        {user.email}
+                      </Typography>
+                      <Box display="flex" gap={1} flexWrap="wrap">
+                        <Chip
+                          label={user.role === "admin" ? "Admin" : "Job Seeker"}
+                          color={getRoleColor(user.role)}
+                          size="small"
+                        />
+                        <Chip
+                          label={user.status.charAt(0).toUpperCase() + user.status.slice(1)}
+                          color={getStatusColor(user.status)}
+                          size="small"
+                        />
+                      </Box>
+                    </Box>
+                    <Tooltip title={user.isSaved ? "Remove from saved" : "Save user"}>
+                      <IconButton
                         onClick={() => toggleSaveUser(user.user_id)}
-                        className={`p-2 rounded-full transition-colors ${
-                          user.isSaved 
-                            ? 'text-yellow-500 bg-yellow-50' 
-                            : 'text-gray-400 hover:text-yellow-500 hover:bg-gray-50'
-                        }`}
-                        title={user.isSaved ? 'Remove from saved' : 'Save user'}
+                        color={user.isSaved ? "warning" : "default"}
                       >
-                        <svg className="w-5 h-5" fill={user.isSaved ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-                        </svg>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
+                        {user.isSaved ? <StarIcon /> : <StarBorderIcon />}
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
+
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={6}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Status</InputLabel>
+                        <Select
+                          value={user.status}
+                          label="Status"
+                          onChange={(e) =>
+                            handleStatusChange(user.user_id, e.target.value)
+                          }
+                        >
+                          <MenuItem value="approved">Approved</MenuItem>
+                          <MenuItem value="suspended">Suspended</MenuItem>
+                          <MenuItem value="pending">Pending</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Role</InputLabel>
+                        <Select
+                          value={user.role}
+                          label="Role"
+                          onChange={(e) =>
+                            handleRoleChange(user.user_id, e.target.value)
+                          }
+                        >
+                          <MenuItem value="job_seeker">Job Seeker</MenuItem>
+                          <MenuItem value="admin">Admin</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                  </Grid>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </Box>
+      ) : (
+        <TableContainer component={Paper} elevation={2}>
+          <Table>
+            <TableHead>
+              <TableRow sx={{ bgcolor: "grey.50" }}>
+                <TableCell>
+                  <Typography variant="subtitle2" fontWeight="bold">
+                    Username
+                  </Typography>
+                </TableCell>
+                <TableCell>
+                  <Typography variant="subtitle2" fontWeight="bold">
+                    Email
+                  </Typography>
+                </TableCell>
+                <TableCell>
+                  <Typography variant="subtitle2" fontWeight="bold">
+                    Role
+                  </Typography>
+                </TableCell>
+                <TableCell>
+                  <Typography variant="subtitle2" fontWeight="bold">
+                    Status
+                  </Typography>
+                </TableCell>
+                <TableCell>
+                  <Typography variant="subtitle2" fontWeight="bold">
+                    Change Status
+                  </Typography>
+                </TableCell>
+                <TableCell>
+                  <Typography variant="subtitle2" fontWeight="bold">
+                    Change Role
+                  </Typography>
+                </TableCell>
+                <TableCell align="center">
+                  <Typography variant="subtitle2" fontWeight="bold">
+                    Save
+                  </Typography>
+                </TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {filteredUsers.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
+                    <Typography color="text.secondary">
+                      {activeTab === 1 ? "No saved users found" : "No users found"}
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredUsers.map((user) => (
+                  <TableRow key={user.user_id} hover>
+                    <TableCell>
+                      <Typography variant="body2" fontWeight="medium">
+                        {user.username}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" color="text.secondary">
+                        {user.email}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={user.role === "admin" ? "Admin" : "Job Seeker"}
+                        color={getRoleColor(user.role)}
+                        size="small"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={user.status.charAt(0).toUpperCase() + user.status.slice(1)}
+                        color={getStatusColor(user.status)}
+                        size="small"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <FormControl size="small" sx={{ minWidth: 120 }}>
+                        <Select
+                          value={user.status}
+                          onChange={(e) =>
+                            handleStatusChange(user.user_id, e.target.value)
+                          }
+                        >
+                          <MenuItem value="approved">Approved</MenuItem>
+                          <MenuItem value="suspended">Suspended</MenuItem>
+                          <MenuItem value="pending">Pending</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </TableCell>
+                    <TableCell>
+                      <FormControl size="small" sx={{ minWidth: 120 }}>
+                        <Select
+                          value={user.role}
+                          onChange={(e) =>
+                            handleRoleChange(user.user_id, e.target.value)
+                          }
+                        >
+                          <MenuItem value="job_seeker">Job Seeker</MenuItem>
+                          <MenuItem value="admin">Admin</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </TableCell>
+                    <TableCell align="center">
+                      <Tooltip title={user.isSaved ? "Remove from saved" : "Save user"}>
+                        <IconButton
+                          onClick={() => toggleSaveUser(user.user_id)}
+                          color={user.isSaved ? "warning" : "default"}
+                        >
+                          {user.isSaved ? <StarIcon /> : <StarBorderIcon />}
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+
+      <Dialog
+        open={confirmDialog.open}
+        onClose={handleCancelRoleChange}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Confirm Admin Promotion</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to promote this user to Admin? They will have
+            full access to manage users and jobs.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={handleCancelRoleChange} color="inherit">
+            Cancel
+          </Button>
+          <Button
+            onClick={handleConfirmRoleChange}
+            variant="contained"
+            color="primary"
+          >
+            Confirm
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Container>
   );
 };
 

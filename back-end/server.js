@@ -965,9 +965,9 @@ app.get('/api/chat/history/:userId', (req, res) => {
       }));
 
       //console.log(`✅ Fetched ${parsedResults.length} chats for user ${userId}`);
-      if (parsedResults.length > 0) {
-        console.log('📅 Most recent chat:', parsedResults[0].chat_id, 'at', parsedResults[0].timestamp);
-      }
+      // if (parsedResults.length > 0) {
+      //   console.log('📅 Most recent chat:', parsedResults[0].chat_id, 'at', parsedResults[0].timestamp);
+      // }
 
       res.json({ success: true, data: parsedResults });
     });
@@ -2167,6 +2167,33 @@ app.post("/api/auth/google", async (req, res) => {
   }
 });
 
+
+// ============================================================================
+// UPDATE USER ROLE
+// ============================================================================
+app.put("/api/users/:user_id/role", (req, res) => {
+  const { user_id } = req.params;
+  const { role } = req.body;
+
+  // Validate role
+  if (!['job_seeker', 'admin'].includes(role)) {
+    return res.status(400).json({ message: "Invalid role" });
+  }
+
+  const query = `UPDATE user SET role = ? WHERE user_id = ?`;
+  db.run(query, [role, user_id], function (err) {
+    if (err) {
+      console.error("Error updating user role:", err);
+      return res.status(500).json({ message: "Database error" });
+    }
+
+    if (this.changes === 0) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json({ message: "User role updated successfully" });
+  });
+});
 
 
 
