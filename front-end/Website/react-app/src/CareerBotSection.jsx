@@ -937,7 +937,6 @@ const CareerBotSection = () => {
   };
 
   // Load last chat from database
-  // Load last chat from database (called on initial mount if no localStorage)
 const loadLastChatFromDatabase = async () => {
   try {
     if (!userData) {

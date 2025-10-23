@@ -1058,7 +1058,7 @@ app.post('/api/jobs/recommend', async (req, res) => {
           objective: resumeData.objective || '',
           summary: resumeData.summary || '',
         };
-        console.log('✅ Resume found for user:', userId, '- Starting AI matching...');
+        console.log('Resume found for user:', userId, '- Starting AI matching...');
       } catch (e) {
         console.error('Error parsing resume data:', e);
         return res.json({
