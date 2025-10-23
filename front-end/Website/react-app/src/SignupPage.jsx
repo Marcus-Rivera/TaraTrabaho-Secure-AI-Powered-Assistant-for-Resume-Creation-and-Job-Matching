@@ -375,7 +375,7 @@ const SignupPage = () => {
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">Phone (Optional)</label>
               <input
-                type="tel"
+                type="text"
                 name="phone"
                 value={form.phone}
                 onChange={handleChange}

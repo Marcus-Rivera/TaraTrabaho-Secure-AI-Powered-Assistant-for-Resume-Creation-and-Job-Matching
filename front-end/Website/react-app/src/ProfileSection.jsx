@@ -215,12 +215,12 @@ const ProfileSection = () => {
       setTimeout(() => setShowAlert(false), 3000);
     }
   };
-
+  
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
       ...prev,
-      [name]: value,
+      [name]: name === 'phone' ? String(value) : value,
     }));
   };
 
@@ -487,7 +487,7 @@ const ProfileSection = () => {
             <div>
               <label className="block text-sm font-semibold mb-1">Phone #:</label>
               <input
-                type="tel"
+                type="text"
                 name="phone"
                 value={formData.phone}
                 maxLength="13"
