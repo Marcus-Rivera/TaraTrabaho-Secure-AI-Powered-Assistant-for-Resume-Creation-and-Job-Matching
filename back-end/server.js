@@ -9,6 +9,8 @@ const SECRET_KEY = "your-secret-key"; // Use .env for real projects
 const nodemailer = require("nodemailer");
 const crypto = require("crypto");
 const otpStore = {};
+const { Resend } = require("resend");
+require("dotenv").config();
 
 // Reset PW
 const resetTokenStore = {};
@@ -20,8 +22,8 @@ const path = require('path');
 // Initialize Express application
 const app = express();
 
-// Gemini API Key
-const GEMINI_API_KEY = "AIzaSyD-QXNB8c8jiYNisBRSU33GcyP1txqhjt0";
+// API Key
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 // Middleware configuration
 app.use(cors());
@@ -383,21 +385,15 @@ app.post("/api/signup", async (req, res) => {
       // Generate 4-digit OTP
       const otp = crypto.randomInt(1000, 9999).toString();
       otpStore[normalizedEmail] = { otp, expires: Date.now() + 5 * 60 * 1000 };
-      const transporter_job = nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-          user: "taratrabaho0@gmail.com",
-          pass: "jkdv bdfk xryh fvql",
-        },
-      });
+      const resend = new (require("resend").Resend)(process.env.RESEND_API_KEY);
 
       // Send OTP via email
       try {
-        await transporter_job.sendMail({
-          from: '"TaraTrabaho Job" <taratrabaho0@gmail.com>',
+        await resend.emails.send({
+          from: 'Tratrabaho <onboarding@resend.dev>',
           to: normalizedEmail,
-          subject: "Your TaraTrabaho OTP Code",
-          text: `Your OTP code is ${otp}. It will expire in 5 minutes.`,
+          subject: 'Hello World',
+          html: `<p>Your OTP code is <b>${otp}</b>. It will expire in 5 minutes.</p>`
         });
 
         res.json({
@@ -1275,24 +1271,13 @@ app.get('/api/stats/:userId', (req, res) => {
 // Add this to your server.js file
 // Make sure to install nodemailer: npm install nodemailer
 
-
-// Email Configuration (add this near the top of server.js)
-const EMAIL_CONFIG_JOB = {
-  service: 'gmail', // or 'outlook', 'yahoo', etc.
-  auth: {
-    user: 'taratrabaho0@gmail.com', // Your email
-    pass: 'jkdv bdfk xryh fvql'
-  }
-};
-
-const transporter = nodemailer.createTransport(EMAIL_CONFIG_JOB);
-
 // ============================================================================
 // JOB APPLICATION ENDPOINT - Complete Version
 // ============================================================================
 app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
   try {
     const { userId, jobId, fullName, email, phone, coverLetter, resumeSource, resumeId } = req.body;
+    const resend = new (require("resend").Resend)(process.env.RESEND_API_KEY);
     
     // Validate required fields
     if (!userId || !jobId || !fullName || !email || !phone) {
@@ -1386,7 +1371,7 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
 
     // 📧 SEND EMAIL TO COMPANY
     const companyMailOptions = {
-      from: '"TaraTrabaho Job" <taratrabaho0@gmail.com>',
+      from: 'Tratrabaho <onboarding@resend.dev>',
       to: job.company_email,
       replyTo: email, // Company can reply directly to applicant
       subject: `New Job Application: ${job.title} - ${fullName}`,
@@ -1420,16 +1405,16 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
       attachments: [
         {
           filename: resumeFilename,
-          content: resumeData,
+          content: resumeData.toString('base64'),
         }
       ]
     };
 
-    await transporter.sendMail(companyMailOptions);
+    await resend.emails.send(companyMailOptions);
 
     // 📧 SEND CONFIRMATION EMAIL TO APPLICANT
     const applicantMailOptions = {
-      from: '"TaraTrabaho Job" <taratrabaho0@gmail.com>',
+      from: 'Tratrabaho <onboarding@resend.dev>',
       to: email,
       subject: `✅ Application Submitted - ${job.title} at ${job.company}`,
       html: `
@@ -1464,7 +1449,7 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
       `
     };
 
-    await transporter.sendMail(applicantMailOptions);
+    await resend.emails.send(applicantMailOptions);
 
     // Update job vacancy count
     await new Promise((resolve, reject) => {
@@ -2249,17 +2234,11 @@ app.post("/api/forget-password", async (req, res) => {
     const resetLink = `http://localhost:5173/reset-password/${resetToken}`;
 
     // Send email
-    const transporter_reset = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: "taratrabaho0@gmail.com",
-        pass: "jkdv bdfk xryh fvql",
-      },
-    });
+    const resend = new (require("resend").Resend)(process.env.RESEND_API_KEY);
 
     try {
-      await transporter_reset.sendMail({
-        from: '"TaraTrabaho" <taratrabaho0@gmail.com>',
+      await resend.emails.send({
+        from: 'Tratrabaho <onboarding@resend.dev>',
         to: email,
         subject: "Reset Your Password - TaraTrabaho",
         html: `
