@@ -63,7 +63,7 @@ const ManageUser = () => {
     const fetchUsers = async () => {
       try {
         setLoading(true);
-        const response = await fetch("http://localhost:5000/api/users");
+        const response = await fetch("/api/users");
         if (!response.ok) {
           throw new Error("Failed to fetch users");
         }
@@ -119,7 +119,7 @@ const ManageUser = () => {
       )
     );
 
-    fetch(`http://localhost:5000/api/users/${userId}`, {
+    fetch(`/api/users/${userId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: newStatus }),
@@ -145,7 +145,7 @@ const ManageUser = () => {
   };
 
   const proceedWithRoleChange = (userId, newRole) => {
-    fetch(`http://localhost:5000/api/users/${userId}/role`, {
+    fetch(`/api/users/${userId}/role`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role: newRole }),

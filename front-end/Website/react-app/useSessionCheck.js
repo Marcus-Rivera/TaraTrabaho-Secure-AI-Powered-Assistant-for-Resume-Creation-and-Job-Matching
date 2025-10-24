@@ -24,7 +24,7 @@ export const useSessionCheck = () => {
     }
 
     // Verify token with backend
-    fetch("http://localhost:5000/api/verifyToken", {
+    fetch("/api/verifyToken", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

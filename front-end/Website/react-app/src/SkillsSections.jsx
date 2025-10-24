@@ -24,7 +24,7 @@ const SkillsSection = ({ userId }) => {
   const fetchSkills = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`http://localhost:5000/api/skills/${userId}`);
+      const response = await fetch(`/api/skills/${userId}`);
       const data = await response.json();
 
       if (data.success) {
@@ -66,7 +66,7 @@ const SkillsSection = ({ userId }) => {
     }
 
     try {
-      const response = await fetch("http://localhost:5000/api/skills", {
+      const response = await fetch("/api/skills", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -109,7 +109,7 @@ const SkillsSection = ({ userId }) => {
   const handleRemoveSkill = async (skillToRemove) => {
     try {
       const response = await fetch(
-        `http://localhost:5000/api/skills/${skillToRemove.id}`,
+        `/api/skills/${skillToRemove.id}`,
         { method: "DELETE" }
       );
       const data = await response.json();

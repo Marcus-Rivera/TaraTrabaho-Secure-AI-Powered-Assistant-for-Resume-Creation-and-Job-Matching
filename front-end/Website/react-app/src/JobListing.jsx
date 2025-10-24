@@ -68,7 +68,7 @@ const JobListing = () => {
   useEffect(() => {
     const fetchJobs = async () => {
       try {
-        const response = await fetch("http://localhost:5000/api/jobs");
+        const response = await fetch("/api/jobs");
         if (!response.ok) {
           throw new Error("Failed to fetch jobs");
         }
@@ -124,7 +124,7 @@ const JobListing = () => {
       try {
         console.log('🔍 Fetching saved jobs for user:', currentUserId);
 
-        const response = await fetch(`http://localhost:5000/api/admin-saved-jobs/${currentUserId}`);
+        const response = await fetch(`/api/admin-saved-jobs/${currentUserId}`);
         if (!response.ok) throw new Error('Failed to fetch saved jobs');
         
         const data = await response.json();
@@ -221,7 +221,7 @@ const JobListing = () => {
       if (isCurrentlySaved) {
         console.log('🗑️ Unsaving job...');
         const response = await fetch(
-          `http://localhost:5000/api/admin-saved-jobs/${currentUserId}/${jobId}`,
+          `/api/admin-saved-jobs/${currentUserId}/${jobId}`,
           { method: 'DELETE' }
         );
         
@@ -235,7 +235,7 @@ const JobListing = () => {
         setSuccessMessage('Job removed from saved!');
       } else {
         console.log('💾 Saving job...');
-        const response = await fetch('http://localhost:5000/api/admin-saved-jobs', {
+        const response = await fetch('/api/admin-saved-jobs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: currentUserId, jobId })
@@ -542,7 +542,7 @@ const JobListing = () => {
         remote: newJob.remote
       };
 
-      const response = await fetch("http://localhost:5000/api/jobs", {
+      const response = await fetch("/api/jobs", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -606,7 +606,7 @@ const JobListing = () => {
         remote: editingJob.remote
       };
 
-      const response = await fetch(`http://localhost:5000/api/jobs/${editingJob.job_id}`, {
+      const response = await fetch(`/api/jobs/${editingJob.job_id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -641,7 +641,7 @@ const JobListing = () => {
   const deleteJob = async (jobId) => {
     if (window.confirm("Are you sure you want to delete this job listing?")) {
       try {
-        const response = await fetch(`http://localhost:5000/api/jobs/${jobId}`, {
+        const response = await fetch(`/api/jobs/${jobId}`, {
           method: "DELETE",
         });
 

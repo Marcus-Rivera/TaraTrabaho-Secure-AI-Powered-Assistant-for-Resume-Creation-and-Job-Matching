@@ -39,7 +39,7 @@ export default function ForgetPasswordPage() {
 
     try {
       // First check if this is a Google account
-      const checkResponse = await fetch(`http://localhost:5000/api/check-auth-method`, {
+      const checkResponse = await fetch(`/api/check-auth-method`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email })
@@ -64,7 +64,7 @@ export default function ForgetPasswordPage() {
       }
 
       // Proceed with password reset
-      const response = await fetch("http://localhost:5000/api/forget-password", {
+      const response = await fetch("/api/forget-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email })

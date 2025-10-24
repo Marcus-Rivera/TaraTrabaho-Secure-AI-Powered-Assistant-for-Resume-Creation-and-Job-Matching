@@ -27,7 +27,7 @@ const Reports = () => {
   const fetchAnalytics = async () => {
     try {
       setLoading(true);
-      const BASE_URL = 'http://localhost:5000/api';
+      const BASE_URL = '/api';
 
       const [dailyUsers, resumes, applications, matches, summaryData] = await Promise.all([
         fetch(`${BASE_URL}/analytics/daily-users`).then(r => r.json()),

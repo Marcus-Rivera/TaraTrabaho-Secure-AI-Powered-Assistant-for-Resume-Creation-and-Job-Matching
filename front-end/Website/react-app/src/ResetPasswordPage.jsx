@@ -25,7 +25,7 @@ export default function ResetPasswordPage() {
       }
 
       try {
-        const response = await fetch(`http://localhost:5000/api/verify-reset-token/${token}`);
+        const response = await fetch(`/api/verify-reset-token/${token}`);
         const data = await response.json();
 
         if (response.ok && data.valid) {
@@ -76,7 +76,7 @@ export default function ResetPasswordPage() {
     }
 
     try {
-      const response = await fetch("http://localhost:5000/api/reset-password", {
+      const response = await fetch("/api/reset-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, password }),

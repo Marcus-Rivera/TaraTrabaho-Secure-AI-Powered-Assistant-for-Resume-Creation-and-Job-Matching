@@ -35,7 +35,7 @@ const SidebarContent = ({ onClose, isMobile }) => {
         const decoded = JSON.parse(atob(token.split(".")[1]));
         const email = decoded.email;
         if (email) {
-          fetch(`http://localhost:5000/api/profile/${email}`)
+          fetch(`/api/profile/${email}`)
             .then((res) => res.json())
             .then((data) => {
               if (data) {
@@ -104,7 +104,7 @@ const SidebarContent = ({ onClose, isMobile }) => {
 
   // load profile picture
   const loadProfilePicture = (userId) => {
-  fetch(`http://localhost:5000/api/profile-picture/${userId}`)
+  fetch(`/api/profile-picture/${userId}`)
     .then((res) => {
       if (res.ok) {
         return res.blob();
@@ -144,7 +144,7 @@ const SidebarContent = ({ onClose, isMobile }) => {
     formData.append('userId', userData.user_id);
 
     try {
-      const response = await fetch('http://localhost:5000/api/profile-picture/upload', {
+      const response = await fetch('/api/profile-picture/upload', {
         method: 'POST',
         body: formData,
       });

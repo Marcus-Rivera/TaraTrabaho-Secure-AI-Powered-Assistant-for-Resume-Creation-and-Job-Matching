@@ -38,7 +38,7 @@ const ProfileSection = () => {
 
   // ✅ Define loadProfilePicture BEFORE useEffect
   const loadProfilePicture = (userId) => {
-    fetch(`http://localhost:5000/api/profile-picture/${userId}`)
+    fetch(`/api/profile-picture/${userId}`)
       .then((res) => {
         if (res.ok) {
           return res.blob();
@@ -57,7 +57,7 @@ const ProfileSection = () => {
   // Load user profile from backend
   useEffect(() => {
     if (userData?.email) {
-      fetch(`http://localhost:5000/api/profile/${userData.email}`)
+      fetch(`/api/profile/${userData.email}`)
         .then((res) => res.json())
         .then((data) => {
           if (data) {
@@ -171,7 +171,7 @@ const ProfileSection = () => {
 
     // Get user_id from backend
     try {
-      const userRes = await fetch(`http://localhost:5000/api/profile/${userData.email}`);
+      const userRes = await fetch(`/api/profile/${userData.email}`);
       const userProfile = await userRes.json();
       
       if (!userProfile.user_id) {
@@ -182,7 +182,7 @@ const ProfileSection = () => {
       formDataToSend.append('profilePicture', file);
       formDataToSend.append('userId', userProfile.user_id);
 
-      const response = await fetch('http://localhost:5000/api/profile-picture/upload', {
+      const response = await fetch('/api/profile-picture/upload', {
         method: 'POST',
         body: formDataToSend,
       });
@@ -270,7 +270,7 @@ const ProfileSection = () => {
 
   try {
     const res = await fetch(
-      `http://localhost:5000/api/profile/${userData.email}`,
+      `/api/profile/${userData.email}`,
       {
         method: "PUT",
         headers: { "Content-Type": "application/json" },

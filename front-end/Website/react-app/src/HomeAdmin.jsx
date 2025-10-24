@@ -27,7 +27,7 @@ const SidebarContent = ({ onClose, isMobile }) => {
 
       // ✅ Only fetch profile for valid admin users
       if (userData.email) {
-        fetch(`http://localhost:5000/api/profile/${userData.email}`)
+        fetch(`/api/profile/${userData.email}`)
           .then((res) => res.json())
           .then((data) => setProfile(data))
           .catch((err) => console.error("Error fetching profile:", err));

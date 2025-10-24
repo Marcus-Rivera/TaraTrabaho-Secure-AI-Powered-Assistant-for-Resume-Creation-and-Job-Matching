@@ -47,7 +47,7 @@ const DashboardSection = () => {
         console.log('Fetching dashboard data for:', userData.email);
         
         // Step 1: Get user profile to fetch user_id
-        const profileResponse = await fetch(`http://localhost:5000/api/profile/${userData.email}`);
+        const profileResponse = await fetch(`/api/profile/${userData.email}`);
         
         if (!profileResponse.ok) {
           throw new Error(`Profile fetch failed: ${profileResponse.status}`);
@@ -66,7 +66,7 @@ const DashboardSection = () => {
         const fetchStats = async () => {
           try {
             console.log('Fetching stats for user:', userId);
-            const statsResponse = await fetch(`http://localhost:5000/api/stats/${userId}`);
+            const statsResponse = await fetch(`/api/stats/${userId}`);
             
             if (!statsResponse.ok) {
               console.error('Stats response not OK:', statsResponse.status);
@@ -94,7 +94,7 @@ const DashboardSection = () => {
         console.log('Checking for user resume...');
         
         // FIRST: Check if user has a resume in the resume table
-        const resumeCheckResponse = await fetch(`http://localhost:5000/api/resume/user/${userId}`);
+        const resumeCheckResponse = await fetch(`/api/resume/user/${userId}`);
         
         if (!resumeCheckResponse.ok) {
           throw new Error(`Failed to check resume: ${resumeCheckResponse.status}`);
@@ -117,7 +117,7 @@ const DashboardSection = () => {
         setHasResume(true);
         
         // NOW call the recommendation API (only if resume exists)
-        const recommendResponse = await fetch('http://localhost:5000/api/jobs/recommend', {
+        const recommendResponse = await fetch('/api/jobs/recommend', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: userId }),
