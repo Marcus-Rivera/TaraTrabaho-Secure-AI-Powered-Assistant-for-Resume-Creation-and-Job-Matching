@@ -392,7 +392,7 @@ app.post("/api/signup", async (req, res) => {
         await resend.emails.send({
           from: 'Tratrabaho <onboarding@resend.dev>',
           to: normalizedEmail,
-          subject: 'Hello World',
+          subject: 'Tratrabaho Email Verification OTP',
           html: `<p>Your OTP code is <b>${otp}</b>. It will expire in 5 minutes.</p>`
         });
 
