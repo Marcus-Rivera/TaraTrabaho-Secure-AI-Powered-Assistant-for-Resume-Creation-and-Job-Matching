@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import SessionExpiredModal from "../SessionExpiredModal";
 import { useSessionCheck } from "../useSessionCheck";
 import { Snackbar, Alert } from "@mui/material"; // ✅ MUI notification
-import { API_BASE } from "../config/api";
+import { API_BASE } from "./config/api";
 
 const SkillsSection = ({ userId }) => {
   const [skills, setSkills] = useState([]);

@@ -15,7 +15,7 @@ import {
 } from '@mui/material';
 import { useSessionCheck } from "../useSessionCheck";
 import { useNavigate } from "react-router-dom";
-import { API_BASE } from "../config/api";
+import { API_BASE } from "./config/api";
 
 const DashboardSection = () => {
   const { userData, loading: userLoading } = useSessionCheck();

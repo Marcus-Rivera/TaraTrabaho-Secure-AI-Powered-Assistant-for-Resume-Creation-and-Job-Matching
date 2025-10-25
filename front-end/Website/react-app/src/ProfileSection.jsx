@@ -8,7 +8,7 @@ import { Alert } from "@mui/material";
 import SkillsSection from "./SkillsSections";
 import SessionExpiredModal from "../SessionExpiredModal";
 import { useSessionCheck } from "../useSessionCheck";  
-import { API_BASE } from "../config/api";
+import { API_BASE } from "./config/api";
 
 const ProfileSection = () => {
   const { userData, loading, sessionError } = useSessionCheck();

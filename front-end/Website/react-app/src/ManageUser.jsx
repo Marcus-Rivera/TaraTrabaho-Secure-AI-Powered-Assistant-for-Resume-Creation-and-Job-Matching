@@ -35,7 +35,7 @@ import {
   Search as SearchIcon,
   FilterList as FilterListIcon,
 } from "@mui/icons-material";
-import { API_BASE } from "../config/api";
+import { API_BASE } from "./config/api";
 
 const ManageUser = () => {
   const theme = useTheme();
@@ -64,7 +64,7 @@ const ManageUser = () => {
     const fetchUsers = async () => {
       try {
         setLoading(true);
-        const response = await fetch("/api/users");
+        const response = await fetch(`${API_BASE}/api/users`);
         if (!response.ok) {
           throw new Error("Failed to fetch users");
         }

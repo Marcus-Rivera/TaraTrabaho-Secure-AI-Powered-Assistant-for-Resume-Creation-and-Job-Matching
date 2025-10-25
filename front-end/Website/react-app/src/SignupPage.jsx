@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import bg from "./assets/BG.png";
 import { Alert } from "@mui/material";
-import { API_BASE } from "../config/api";
+import { API_BASE } from "./config/api";
 
 // Terms Modal Component
 const TermsModal = ({ isOpen, onClose, form, setForm }) => {

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import bg from "./assets/BG.png";
 import Alert from "@mui/material/Alert";
 import { useNavigate, useParams } from "react-router-dom";
-import { API_BASE } from "../config/api";
+import { API_BASE } from "./config/api";
 
 export default function ResetPasswordPage() {
   const [password, setPassword] = useState("");

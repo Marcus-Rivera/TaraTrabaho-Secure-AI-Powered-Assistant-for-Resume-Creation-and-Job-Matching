@@ -41,7 +41,7 @@ import DescriptionIcon from '@mui/icons-material/Description';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
 import { useSessionCheck } from "../useSessionCheck";
-import { API_BASE } from "../config/api";
+import { API_BASE } from "./config/api";
 
 const JobListingsSection = () => {
   const { userData } = useSessionCheck();

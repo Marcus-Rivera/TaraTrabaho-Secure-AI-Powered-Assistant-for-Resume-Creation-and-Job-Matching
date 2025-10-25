@@ -9,7 +9,7 @@ import AssignmentIcon from "@mui/icons-material/Assignment";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useSessionCheck } from "../useSessionCheck";
 import SessionExpiredModal from "../SessionExpiredModal";
-import { API_BASE } from "../config/api";
+import { API_BASE } from "./config/api";
 
 const SidebarContent = ({ onClose, isMobile }) => {
   const { userData, sessionError } = useSessionCheck();

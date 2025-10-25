@@ -3,7 +3,7 @@ import ReactMarkdown from "react-markdown";
 import { useSessionCheck } from "../useSessionCheck";
 import SessionExpiredModal from "../SessionExpiredModal";
 import { Alert } from "@mui/material";
-import { API_BASE } from "../config/api";
+import { API_BASE } from "./config/api";
 
 const CareerBotSection = () => {
   const [messages, setMessages] = useState([

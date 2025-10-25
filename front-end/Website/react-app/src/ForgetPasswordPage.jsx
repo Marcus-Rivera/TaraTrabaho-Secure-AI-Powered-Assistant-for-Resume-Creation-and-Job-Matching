@@ -3,7 +3,7 @@ import bg from './assets/BG.png';
 import Alert from '@mui/material/Alert';
 import CircularProgress from '@mui/material/CircularProgress';
 import { useNavigate } from "react-router-dom";
-import { API_BASE } from "../config/api";
+import { API_BASE } from "./config/api";
 
 export default function ForgetPasswordPage() {
   const [email, setEmail] = useState("");

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { jwtDecode } from "jwt-decode"; // Add this import at the very top
-import { API_BASE } from "../config/api";
+import { API_BASE } from "./config/api";
 
 const JobListing = () => {
   const [jobs, setJobs] = useState([]);

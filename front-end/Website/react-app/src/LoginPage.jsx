@@ -6,6 +6,7 @@ import Alert from '@mui/material/Alert';
 import { useNavigate } from "react-router-dom";
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import { jwtDecode } from 'jwt-decode';
+import { API_BASE } from "./config/api";
 
 //Google Client ID
 const GOOGLE_CLIENT_ID = "951421250117-tsbuglbst1a4oktfvhd6ht6j4komoue0.apps.googleusercontent.com";
@@ -96,7 +97,7 @@ function LoginForm() {
   setIsLoading(true);
 
   try {
-    const response = await fetch("/api/login", {
+    const response = await fetch(`${API_BASE}/api/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password })

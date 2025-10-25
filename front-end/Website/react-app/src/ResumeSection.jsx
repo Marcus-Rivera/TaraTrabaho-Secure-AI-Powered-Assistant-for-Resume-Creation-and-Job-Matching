@@ -8,7 +8,7 @@ import CloseIcon from "@mui/icons-material/Close";
 import { useSessionCheck } from "../useSessionCheck";
 import SessionExpiredModal from "../SessionExpiredModal";
 import { Alert } from "@mui/material";
-import { API_BASE } from "../config/api";
+import { API_BASE } from "./config/api";
 
 const ResumeSection = () => {
   const { userData, loading, sessionError } = useSessionCheck();

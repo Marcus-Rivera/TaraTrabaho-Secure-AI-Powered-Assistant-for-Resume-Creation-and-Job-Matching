@@ -9,7 +9,7 @@ import { useSessionCheck } from "../useSessionCheck";
 import { useRef } from "react";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import PersonIcon from "@mui/icons-material/Person";
-import { API_BASE } from "../config/api";
+import { API_BASE } from "./config/api";
 
 const SidebarContent = ({ onClose, isMobile }) => {
   const location = useLocation();
