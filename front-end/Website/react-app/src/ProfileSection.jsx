@@ -183,7 +183,7 @@ const ProfileSection = () => {
       formDataToSend.append('profilePicture', file);
       formDataToSend.append('userId', userProfile.user_id);
 
-      const response = await fetch('/api/profile-picture/upload', {
+      const response = await fetch(`${API_BASE}/api/profile-picture/upload`, {
         method: 'POST',
         body: formDataToSend,
       });

@@ -118,7 +118,7 @@ const DashboardSection = () => {
         setHasResume(true);
         
         // NOW call the recommendation API (only if resume exists)
-        const recommendResponse = await fetch('/api/jobs/recommend', {
+        const recommendResponse = await fetch(`${API_BASE}/api/jobs/recommend`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: userId }),

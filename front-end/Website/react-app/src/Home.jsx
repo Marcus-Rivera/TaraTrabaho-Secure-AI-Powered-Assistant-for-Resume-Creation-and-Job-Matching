@@ -145,7 +145,7 @@ const SidebarContent = ({ onClose, isMobile }) => {
     formData.append('userId', userData.user_id);
 
     try {
-      const response = await fetch('/api/profile-picture/upload', {
+      const response = await fetch(`${API_BASE}/api/profile-picture/upload`, {
         method: 'POST',
         body: formData,
       });

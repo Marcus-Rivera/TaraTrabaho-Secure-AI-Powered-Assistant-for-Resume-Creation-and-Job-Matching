@@ -79,7 +79,7 @@ const JobListingsSection = () => {
     const fetchJobs = async () => {
       try {
         setLoading(true);
-        const response = await fetch('/api/jobs');
+        const response = await fetch(`${API_BASE}/api/jobs`);
         
         if (!response.ok) {
           throw new Error('Failed to fetch jobs');
@@ -219,7 +219,7 @@ const JobListingsSection = () => {
         }
       } else {
         // Save the job
-        const response = await fetch('/api/saved-jobs', {
+        const response = await fetch(`${API_BASE}/api/saved-jobs`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId, jobId }),
@@ -323,7 +323,7 @@ const JobListingsSection = () => {
       }
 
       // Submit application
-      const response = await fetch('/api/jobs/apply', {
+      const response = await fetch(`${API_BASE}/api/jobs/apply`, {
         method: 'POST',
         body: formData,
       });

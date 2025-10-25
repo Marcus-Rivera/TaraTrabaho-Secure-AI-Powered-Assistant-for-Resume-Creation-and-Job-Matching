@@ -177,7 +177,7 @@ const CareerBotSection = () => {
         data = await response.json();
       } else {
         console.log('Creating new chat');
-        response = await fetch('/api/chat/save', {
+        response = await fetch(`${API_BASE}api/chat/save`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -892,7 +892,7 @@ const CareerBotSection = () => {
       formData.append('resume', pdfBlob, filename);
       formData.append('userId', userProfile.user_id);
       formData.append('resumeData', JSON.stringify(resumeData));
-      const response = await fetch('/api/resume/save', {
+      const response = await fetch(`${API_BASE}/api/resume/save`, {
         method: 'POST',
         body: formData,
       });

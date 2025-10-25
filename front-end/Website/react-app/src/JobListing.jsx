@@ -236,7 +236,7 @@ const JobListing = () => {
         setSuccessMessage('Job removed from saved!');
       } else {
         console.log('💾 Saving job...');
-        const response = await fetch('/api/admin-saved-jobs', {
+        const response = await fetch(`${API_BASE}/api/admin-saved-jobs`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: currentUserId, jobId })
