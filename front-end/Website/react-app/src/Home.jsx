@@ -9,6 +9,7 @@ import { useSessionCheck } from "../useSessionCheck";
 import { useRef } from "react";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import PersonIcon from "@mui/icons-material/Person";
+import { API_BASE } from "../config/api";
 
 const SidebarContent = ({ onClose, isMobile }) => {
   const location = useLocation();
@@ -35,7 +36,7 @@ const SidebarContent = ({ onClose, isMobile }) => {
         const decoded = JSON.parse(atob(token.split(".")[1]));
         const email = decoded.email;
         if (email) {
-          fetch(`/api/profile/${email}`)
+          fetch(`${API_BASE}/api/profile/${email}`)
             .then((res) => res.json())
             .then((data) => {
               if (data) {
@@ -104,7 +105,7 @@ const SidebarContent = ({ onClose, isMobile }) => {
 
   // load profile picture
   const loadProfilePicture = (userId) => {
-  fetch(`/api/profile-picture/${userId}`)
+  fetch(`${API_BASE}/api/profile-picture/${userId}`)
     .then((res) => {
       if (res.ok) {
         return res.blob();

@@ -9,6 +9,7 @@ import AssignmentIcon from "@mui/icons-material/Assignment";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useSessionCheck } from "../useSessionCheck";
 import SessionExpiredModal from "../SessionExpiredModal";
+import { API_BASE } from "../config/api";
 
 const SidebarContent = ({ onClose, isMobile }) => {
   const { userData, sessionError } = useSessionCheck();
@@ -27,7 +28,7 @@ const SidebarContent = ({ onClose, isMobile }) => {
 
       // ✅ Only fetch profile for valid admin users
       if (userData.email) {
-        fetch(`/api/profile/${userData.email}`)
+        fetch(`${API_BASE}/api/profile/${userData.email}`)
           .then((res) => res.json())
           .then((data) => setProfile(data))
           .catch((err) => console.error("Error fetching profile:", err));

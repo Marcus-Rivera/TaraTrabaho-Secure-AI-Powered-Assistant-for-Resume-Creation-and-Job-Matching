@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { jwtDecode } from "jwt-decode"; // Add this import at the very top
+import { API_BASE } from "../config/api";
 
 const JobListing = () => {
   const [jobs, setJobs] = useState([]);
@@ -124,7 +125,7 @@ const JobListing = () => {
       try {
         console.log('🔍 Fetching saved jobs for user:', currentUserId);
 
-        const response = await fetch(`/api/admin-saved-jobs/${currentUserId}`);
+        const response = await fetch(`${API_BASE}/api/admin-saved-jobs/${currentUserId}`);
         if (!response.ok) throw new Error('Failed to fetch saved jobs');
         
         const data = await response.json();
@@ -606,7 +607,7 @@ const JobListing = () => {
         remote: editingJob.remote
       };
 
-      const response = await fetch(`/api/jobs/${editingJob.job_id}`, {
+      const response = await fetch(`${API_BASE}/api/jobs/${editingJob.job_id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -641,7 +642,7 @@ const JobListing = () => {
   const deleteJob = async (jobId) => {
     if (window.confirm("Are you sure you want to delete this job listing?")) {
       try {
-        const response = await fetch(`/api/jobs/${jobId}`, {
+        const response = await fetch(`${API_BASE}/api/jobs/${jobId}`, {
           method: "DELETE",
         });
 

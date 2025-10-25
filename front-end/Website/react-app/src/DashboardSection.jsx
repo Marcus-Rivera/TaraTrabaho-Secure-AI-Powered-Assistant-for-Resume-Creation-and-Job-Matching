@@ -15,6 +15,7 @@ import {
 } from '@mui/material';
 import { useSessionCheck } from "../useSessionCheck";
 import { useNavigate } from "react-router-dom";
+import { API_BASE } from "../config/api";
 
 const DashboardSection = () => {
   const { userData, loading: userLoading } = useSessionCheck();
@@ -47,7 +48,7 @@ const DashboardSection = () => {
         console.log('Fetching dashboard data for:', userData.email);
         
         // Step 1: Get user profile to fetch user_id
-        const profileResponse = await fetch(`/api/profile/${userData.email}`);
+        const profileResponse = await fetch(`${API_BASE}/api/profile/${userData.email}`);
         
         if (!profileResponse.ok) {
           throw new Error(`Profile fetch failed: ${profileResponse.status}`);
@@ -66,7 +67,7 @@ const DashboardSection = () => {
         const fetchStats = async () => {
           try {
             console.log('Fetching stats for user:', userId);
-            const statsResponse = await fetch(`/api/stats/${userId}`);
+            const statsResponse = await fetch(`${API_BASE}/api/stats/${userId}`);
             
             if (!statsResponse.ok) {
               console.error('Stats response not OK:', statsResponse.status);
@@ -94,7 +95,7 @@ const DashboardSection = () => {
         console.log('Checking for user resume...');
         
         // FIRST: Check if user has a resume in the resume table
-        const resumeCheckResponse = await fetch(`/api/resume/user/${userId}`);
+        const resumeCheckResponse = await fetch(`${API_BASE}/api/resume/user/${userId}`);
         
         if (!resumeCheckResponse.ok) {
           throw new Error(`Failed to check resume: ${resumeCheckResponse.status}`);

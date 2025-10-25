@@ -9,13 +9,13 @@ export default defineConfig({
     tailwindcss(),
   ],
 
-  server: {
-    proxy: {
-      '/api': {
-        target: 'https://taratrabaho-secure-ai-powered-assistant-3913.onrender.com',
-        changeOrigin: true,
-        secure: false,
-      },
-    },
-  },
+  // server: {
+  //   proxy: {
+  //     '/api': {
+  //       target: 'https://taratrabaho-secure-ai-powered-assistant-3913.onrender.com',
+  //       changeOrigin: true,
+  //       secure: false,
+  //     },
+  //   },
+  // },
 })

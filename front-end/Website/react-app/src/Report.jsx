@@ -3,6 +3,7 @@ import {
   LineChart, Line, BarChart, Bar, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell
 } from 'recharts';
+import { API_BASE } from "../config/api";
 
 const Reports = () => {
   const [loading, setLoading] = useState(true);
@@ -30,11 +31,11 @@ const Reports = () => {
       const BASE_URL = '/api';
 
       const [dailyUsers, resumes, applications, matches, summaryData] = await Promise.all([
-        fetch(`${BASE_URL}/analytics/daily-users`).then(r => r.json()),
-        fetch(`${BASE_URL}/analytics/resumes`).then(r => r.json()),
-        fetch(`${BASE_URL}/analytics/applications`).then(r => r.json()),
-        fetch(`${BASE_URL}/analytics/matches`).then(r => r.json()),
-        fetch(`${BASE_URL}/analytics/summary`).then(r => r.json())
+        fetch(`${API_BASE}${BASE_URL}/analytics/daily-users`).then(r => r.json()),
+        fetch(`${API_BASE}${BASE_URL}/analytics/resumes`).then(r => r.json()),
+        fetch(`${API_BASE}${BASE_URL}/analytics/applications`).then(r => r.json()),
+        fetch(`${API_BASE}${BASE_URL}/analytics/matches`).then(r => r.json()),
+        fetch(`${API_BASE}${BASE_URL}/analytics/summary`).then(r => r.json())
       ]);
 
       setDailyUsersData(dailyUsers.data || []);

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import bg from "./assets/BG.png";
 import { Alert } from "@mui/material";
+import { API_BASE } from "../config/api";
 
 // Terms Modal Component
 const TermsModal = ({ isOpen, onClose, form, setForm }) => {
@@ -178,7 +179,7 @@ const SignupPage = () => {
       setIsLoading(true);
       
       try {
-        const response = await fetch("/api/signup", {
+        const response = await fetch(`${API_BASE}/api/signup`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(form),

@@ -8,6 +8,7 @@ import { Alert } from "@mui/material";
 import SkillsSection from "./SkillsSections";
 import SessionExpiredModal from "../SessionExpiredModal";
 import { useSessionCheck } from "../useSessionCheck";  
+import { API_BASE } from "../config/api";
 
 const ProfileSection = () => {
   const { userData, loading, sessionError } = useSessionCheck();
@@ -38,7 +39,7 @@ const ProfileSection = () => {
 
   // ✅ Define loadProfilePicture BEFORE useEffect
   const loadProfilePicture = (userId) => {
-    fetch(`/api/profile-picture/${userId}`)
+    fetch(`${API_BASE}/api/profile-picture/${userId}`)
       .then((res) => {
         if (res.ok) {
           return res.blob();
@@ -57,7 +58,7 @@ const ProfileSection = () => {
   // Load user profile from backend
   useEffect(() => {
     if (userData?.email) {
-      fetch(`/api/profile/${userData.email}`)
+      fetch(`${API_BASE}/api/profile/${userData.email}`)
         .then((res) => res.json())
         .then((data) => {
           if (data) {
@@ -171,7 +172,7 @@ const ProfileSection = () => {
 
     // Get user_id from backend
     try {
-      const userRes = await fetch(`/api/profile/${userData.email}`);
+      const userRes = await fetch(`${API_BASE}/api/profile/${userData.email}`);
       const userProfile = await userRes.json();
       
       if (!userProfile.user_id) {

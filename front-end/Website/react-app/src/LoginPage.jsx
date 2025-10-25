@@ -166,7 +166,7 @@ function LoginForm() {
       console.log("📧 Google user info:", decoded);
 
       // Send to backend
-      const response = await fetch("/api/auth/google", {
+      const response = await fetch(`${API_BASE}/api/auth/google`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

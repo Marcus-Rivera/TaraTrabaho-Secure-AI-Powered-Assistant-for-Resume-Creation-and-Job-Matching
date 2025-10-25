@@ -8,6 +8,7 @@ import CloseIcon from "@mui/icons-material/Close";
 import { useSessionCheck } from "../useSessionCheck";
 import SessionExpiredModal from "../SessionExpiredModal";
 import { Alert } from "@mui/material";
+import { API_BASE } from "../config/api";
 
 const ResumeSection = () => {
   const { userData, loading, sessionError } = useSessionCheck();
@@ -31,7 +32,7 @@ const ResumeSection = () => {
         setIsLoading(true);
         
         // First, get user_id from profile
-        const profileResponse = await fetch(`/api/profile/${userData.email}`);
+        const profileResponse = await fetch(`${API_BASE}/api/profile/${userData.email}`);
         const userProfile = await profileResponse.json();
         
         if (!userProfile || !userProfile.user_id) {
@@ -39,7 +40,7 @@ const ResumeSection = () => {
         }
 
         // Then fetch resumes using user_id
-        const resumeResponse = await fetch(`/api/resume/user/${userProfile.user_id}`);
+        const resumeResponse = await fetch(`${API_BASE}/api/resume/user/${userProfile.user_id}`);
         const resumeData = await resumeResponse.json();
 
         if (resumeResponse.ok) {
@@ -70,7 +71,7 @@ const ResumeSection = () => {
   const handlePreview = async (resumeId, filename) => {
     try {
       setPreviewLoading(true);
-      const response = await fetch(`/api/resume/download/${resumeId}`);
+      const response = await fetch(`${API_BASE}/api/resume/download/${resumeId}`);
       
       if (!response.ok) {
         throw new Error("Failed to load resume preview");
@@ -98,7 +99,7 @@ const ResumeSection = () => {
 
   const handleDownload = async (resumeId, filename) => {
     try {
-      const response = await fetch(`/api/resume/download/${resumeId}`);
+      const response = await fetch(`${API_BASE}/api/resume/download/${resumeId}`);
       
       if (!response.ok) {
         throw new Error("Failed to download resume");
@@ -124,7 +125,7 @@ const ResumeSection = () => {
   const handleDelete = async () => {
     if (!deleteConfirm) return;
     try {
-      const response = await fetch(`/api/resume/${deleteConfirm.resumeId}`, {
+      const response = await fetch(`${API_BASE}/api/resume/${deleteConfirm.resumeId}`, {
         method: 'DELETE',
       });
 

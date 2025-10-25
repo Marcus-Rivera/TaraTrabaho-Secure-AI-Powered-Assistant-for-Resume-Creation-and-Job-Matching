@@ -35,6 +35,7 @@ import {
   Search as SearchIcon,
   FilterList as FilterListIcon,
 } from "@mui/icons-material";
+import { API_BASE } from "../config/api";
 
 const ManageUser = () => {
   const theme = useTheme();
@@ -119,7 +120,7 @@ const ManageUser = () => {
       )
     );
 
-    fetch(`/api/users/${userId}`, {
+    fetch(`${API_BASE}/api/users/${userId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: newStatus }),
@@ -145,7 +146,7 @@ const ManageUser = () => {
   };
 
   const proceedWithRoleChange = (userId, newRole) => {
-    fetch(`/api/users/${userId}/role`, {
+    fetch(`${API_BASE}/api/users/${userId}/role`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role: newRole }),

@@ -3,6 +3,7 @@ import bg from './assets/BG.png';
 import Alert from '@mui/material/Alert';
 import CircularProgress from '@mui/material/CircularProgress';
 import { useNavigate } from "react-router-dom";
+import { API_BASE } from "../config/api";
 
 export default function ForgetPasswordPage() {
   const [email, setEmail] = useState("");
@@ -39,7 +40,7 @@ export default function ForgetPasswordPage() {
 
     try {
       // First check if this is a Google account
-      const checkResponse = await fetch(`/api/check-auth-method`, {
+      const checkResponse = await fetch(`${API_BASE}/api/check-auth-method`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email })

@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import { useSessionCheck } from "../useSessionCheck";
 import SessionExpiredModal from "../SessionExpiredModal";
 import { Alert } from "@mui/material";
+import { API_BASE } from "../config/api";
 
 const CareerBotSection = () => {
   const [messages, setMessages] = useState([
@@ -150,7 +151,7 @@ const CareerBotSection = () => {
         return null;
       }
       
-      const userResponse = await fetch(`/api/profile/${userData.email}`);
+      const userResponse = await fetch(`${API_BASE}/api/profile/${userData.email}`);
       const userProfile = await userResponse.json();
       
       if (!userProfile || !userProfile.user_id) {
@@ -165,7 +166,7 @@ const CareerBotSection = () => {
       
       if (lastSavedChatId) {
         //console.log('Updating existing chat:', lastSavedChatId);
-        response = await fetch(`/api/chat/update/${lastSavedChatId}`, {
+        response = await fetch(`${API_BASE}/api/chat/update/${lastSavedChatId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -220,12 +221,12 @@ const CareerBotSection = () => {
       if (!userData) return;
       
       setLoadingChats(true);
-      const userResponse = await fetch(`/api/profile/${userData.email}`);
+      const userResponse = await fetch(`${API_BASE}/api/profile/${userData.email}`);
       const userProfile = await userResponse.json();
       
       if (!userProfile || !userProfile.user_id) return;
       
-      const response = await fetch(`/api/chat/history/${userProfile.user_id}`);
+      const response = await fetch(`${API_BASE}/api/chat/history/${userProfile.user_id}`);
       const data = await response.json();
       
       if (data.success) {
@@ -880,7 +881,7 @@ const CareerBotSection = () => {
       }
       
       // Fetch user_id from backend using email (same pattern as ProfileSection)
-      const userResponse = await fetch(`/api/profile/${userData.email}`);
+      const userResponse = await fetch(`${API_BASE}/api/profile/${userData.email}`);
       const userProfile = await userResponse.json();
       
       if (!userProfile || !userProfile.user_id) {
@@ -945,7 +946,7 @@ const loadLastChatFromDatabase = async () => {
     }
     
     // Get user_id
-    const userResponse = await fetch(`/api/profile/${userData.email}`);
+    const userResponse = await fetch(`${API_BASE}/api/profile/${userData.email}`);
     const userProfile = await userResponse.json();
     
     if (!userProfile || !userProfile.user_id) {
@@ -956,7 +957,7 @@ const loadLastChatFromDatabase = async () => {
     // ==========================================
     // 🔑 KEY QUERY: Get LAST chat by timestamp
     // ==========================================
-    const response = await fetch(`/api/chat/history/${userProfile.user_id}`);
+    const response = await fetch(`${API_BASE}/api/chat/history/${userProfile.user_id}`);
     const data = await response.json();
     
     if (data.success && data.data.length > 0) {
@@ -1134,7 +1135,7 @@ const loadLastChatFromDatabase = async () => {
     try {
       console.log('Deleting chat:', chatId);
       
-      const response = await fetch(`/api/chat/${chatId}`, {
+      const response = await fetch(`${API_BASE}/api/chat/${chatId}`, {
         method: 'DELETE',
       });
       
