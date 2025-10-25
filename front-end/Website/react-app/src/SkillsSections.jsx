@@ -67,7 +67,7 @@ const SkillsSection = ({ userId }) => {
     }
 
     try {
-      const response = await fetch("/api/skills", {
+      const response = await fetch(`${API_BASE}/api/skills`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

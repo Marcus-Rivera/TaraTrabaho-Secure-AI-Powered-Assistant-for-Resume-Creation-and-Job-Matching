@@ -269,7 +269,7 @@ const CareerBotSection = () => {
         ? `${instruction}\n\nUser input: ${userInput}`
         : userInput;
 
-      const res = await fetch("/api/gemini", {
+      const res = await fetch(`${API_BASE}/api/gemini`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt }),

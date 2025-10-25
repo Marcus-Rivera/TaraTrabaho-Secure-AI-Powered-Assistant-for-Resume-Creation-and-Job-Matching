@@ -69,7 +69,7 @@ const JobListing = () => {
   useEffect(() => {
     const fetchJobs = async () => {
       try {
-        const response = await fetch("/api/jobs");
+        const response = await fetch(`${API_BASE}/api/jobs`);
         if (!response.ok) {
           throw new Error("Failed to fetch jobs");
         }
@@ -543,7 +543,7 @@ const JobListing = () => {
         remote: newJob.remote
       };
 
-      const response = await fetch("/api/jobs", {
+      const response = await fetch(`${API_BASE}/api/jobs`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
