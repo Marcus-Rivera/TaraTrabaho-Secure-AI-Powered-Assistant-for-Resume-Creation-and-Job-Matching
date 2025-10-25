@@ -222,7 +222,7 @@ const JobListing = () => {
       if (isCurrentlySaved) {
         console.log('🗑️ Unsaving job...');
         const response = await fetch(
-          `/api/admin-saved-jobs/${currentUserId}/${jobId}`,
+          `${API_BASE}/api/admin-saved-jobs/${currentUserId}/${jobId}`,
           { method: 'DELETE' }
         );
         

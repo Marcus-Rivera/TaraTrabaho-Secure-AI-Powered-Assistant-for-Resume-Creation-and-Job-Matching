@@ -110,7 +110,7 @@ const SkillsSection = ({ userId }) => {
   const handleRemoveSkill = async (skillToRemove) => {
     try {
       const response = await fetch(
-        `/api/skills/${skillToRemove.id}`,
+        `${API_BASE}/api/skills/${skillToRemove.id}`,
         { method: "DELETE" }
       );
       const data = await response.json();

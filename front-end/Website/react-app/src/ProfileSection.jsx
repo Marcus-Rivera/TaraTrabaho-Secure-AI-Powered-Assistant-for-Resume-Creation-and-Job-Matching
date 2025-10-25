@@ -271,7 +271,7 @@ const ProfileSection = () => {
 
   try {
     const res = await fetch(
-      `/api/profile/${userData.email}`,
+      `${API_BASE}/api/profile/${userData.email}`,
       {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
