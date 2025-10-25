@@ -6,10 +6,11 @@ const bodyParser = require("body-parser");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const SECRET_KEY = "your-secret-key"; // Use .env for real projects
-const nodemailer = require("nodemailer");
 const crypto = require("crypto");
 const otpStore = {};
-const { Resend } = require("resend");
+
+//SendGrid
+const sgMail = require('@sendgrid/mail');
 require("dotenv").config();
 
 // Reset PW
@@ -385,16 +386,44 @@ app.post("/api/signup", async (req, res) => {
       // Generate 4-digit OTP
       const otp = crypto.randomInt(1000, 9999).toString();
       otpStore[normalizedEmail] = { otp, expires: Date.now() + 5 * 60 * 1000 };
-      const resend = new (require("resend").Resend)(process.env.RESEND_API_KEY);
 
       // Send OTP via email
       try {
-        await resend.emails.send({
-          from: 'Tratrabaho <onboarding@resend.dev>',
+        const msg = {
           to: normalizedEmail,
+          from: process.env.SENDGRID_FROM_EMAIL, // Must be verified in SendGrid
           subject: 'Tratrabaho Email Verification OTP',
-          html: `<p>Your OTP code is <b>${otp}</b>. It will expire in 5 minutes.</p>`
-        });
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <div style="background: linear-gradient(135deg, #BAE8E8, #FBDA23); padding: 20px; border-radius: 10px 10px 0 0;">
+                <h2 style="color: #272343; margin: 0;">✉️ Email Verification</h2>
+              </div>
+              
+              <div style="background: white; padding: 30px; border: 1px solid #ddd;">
+                <p>Welcome to <strong>TaraTrabaho</strong>!</p>
+                
+                <p>Your verification code is:</p>
+                
+                <div style="text-align: center; margin: 30px 0;">
+                  <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #2C275C; background: #f0f9ff; padding: 15px 30px; border-radius: 8px; display: inline-block;">
+                    ${otp}
+                  </span>
+                </div>
+                
+                <p style="color: #d32f2f; font-weight: bold;">
+                  ⚠️ This code will expire in 5 minutes.
+                </p>
+                
+                <p style="color: #666; font-size: 14px; margin-top: 20px;">
+                  If you didn't request this code, please ignore this email.
+                </p>
+              </div>
+            </div>
+          `
+        };
+
+        await sgMail.send(msg);
+        console.log('✅ OTP email sent to:', normalizedEmail);
 
         res.json({
           status: "pending",
@@ -402,9 +431,10 @@ app.post("/api/signup", async (req, res) => {
           email: normalizedEmail,
         });
       } catch (mailErr) {
-        console.error("Error sending OTP email:", mailErr);
+        console.error("❌ Error sending OTP email:", mailErr.response?.body || mailErr);
         // Clean up temporary data if email fails
-        delete tempUserStore[email];
+        delete tempUserStore[normalizedEmail];
+        delete otpStore[normalizedEmail];
         res.status(500).json({
           status: "error",
           message: "Failed to send OTP email. Please try again.",
@@ -1272,12 +1302,11 @@ app.get('/api/stats/:userId', (req, res) => {
 // Make sure to install nodemailer: npm install nodemailer
 
 // ============================================================================
-// JOB APPLICATION ENDPOINT - Complete Version
+// JOB APPLICATION ENDPOINT 
 // ============================================================================
 app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
   try {
     const { userId, jobId, fullName, email, phone, coverLetter, resumeSource, resumeId } = req.body;
-    const resend = new (require("resend").Resend)(process.env.RESEND_API_KEY);
     
     // Validate required fields
     if (!userId || !jobId || !fullName || !email || !phone) {
@@ -1361,6 +1390,7 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
       );
     });
 
+    // Track activity
     const activityQuery = `
       INSERT INTO user_activity (user_id, activity_type, activity_date)
       VALUES (?, 'job_applied', date('now'))
@@ -1370,9 +1400,9 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
     });
 
     // 📧 SEND EMAIL TO COMPANY
-    const companyMailOptions = {
-      from: 'Tratrabaho <onboarding@resend.dev>',
+    const companyMsg = {
       to: job.company_email,
+      from: process.env.SENDGRID_FROM_EMAIL,
       replyTo: email, // Company can reply directly to applicant
       subject: `New Job Application: ${job.title} - ${fullName}`,
       html: `
@@ -1404,18 +1434,21 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
       `,
       attachments: [
         {
-          filename: resumeFilename,
           content: resumeData.toString('base64'),
+          filename: resumeFilename,
+          type: 'application/pdf',
+          disposition: 'attachment'
         }
       ]
     };
 
-    await resend.emails.send(companyMailOptions);
+    await sgMail.send(companyMsg);
+    console.log('✅ Application email sent to company:', job.company_email);
 
     // 📧 SEND CONFIRMATION EMAIL TO APPLICANT
-    const applicantMailOptions = {
-      from: 'Tratrabaho <onboarding@resend.dev>',
+    const applicantMsg = {
       to: email,
+      from: process.env.SENDGRID_FROM_EMAIL,
       subject: `✅ Application Submitted - ${job.title} at ${job.company}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -1449,7 +1482,8 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
       `
     };
 
-    await resend.emails.send(applicantMailOptions);
+    await sgMail.send(applicantMsg);
+    console.log('✅ Confirmation email sent to applicant:', email);
 
     // Update job vacancy count
     await new Promise((resolve, reject) => {
@@ -1470,7 +1504,7 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error in application endpoint:', error);
+    console.error('❌ Error in application endpoint:', error.response?.body || error);
     res.status(500).json({ 
       success: false, 
       error: 'Failed to submit application. Please try again.' 
@@ -2233,13 +2267,11 @@ app.post("/api/forget-password", async (req, res) => {
     // Create reset link
     const resetLink = `http://localhost:5173/reset-password/${resetToken}`;
 
-    // Send email
-    const resend = new (require("resend").Resend)(process.env.RESEND_API_KEY);
-
+    // Send email using SendGrid
     try {
-      await resend.emails.send({
-        from: 'Tratrabaho <onboarding@resend.dev>',
+      const msg = {
         to: email,
+        from: process.env.SENDGRID_FROM_EMAIL, // Must be verified in SendGrid
         subject: "Reset Your Password - TaraTrabaho",
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -2254,7 +2286,7 @@ app.post("/api/forget-password", async (req, res) => {
               
               <div style="text-align: center; margin: 30px 0;">
                 <a href="${resetLink}" 
-                   style="background: #2C275C; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
+                  style="background: #2C275C; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
                   Reset Password
                 </a>
               </div>
@@ -2274,7 +2306,10 @@ app.post("/api/forget-password", async (req, res) => {
             </div>
           </div>
         `
-      });
+      };
+
+      await sgMail.send(msg);
+      console.log('✅ Password reset email sent to:', email);
 
       res.json({ 
         success: true, 
@@ -2282,7 +2317,7 @@ app.post("/api/forget-password", async (req, res) => {
       });
 
     } catch (mailErr) {
-      console.error("Error sending reset email:", mailErr);
+      console.error("❌ Error sending reset email:", mailErr.response?.body || mailErr);
       res.status(500).json({ 
         success: false, 
         message: "Failed to send reset email. Please try again." 
