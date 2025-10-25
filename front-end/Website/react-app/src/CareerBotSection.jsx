@@ -177,7 +177,7 @@ const CareerBotSection = () => {
         data = await response.json();
       } else {
         console.log('Creating new chat');
-        response = await fetch(`${API_BASE}api/chat/save`, {
+        response = await fetch(`${API_BASE}/api/chat/save`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
