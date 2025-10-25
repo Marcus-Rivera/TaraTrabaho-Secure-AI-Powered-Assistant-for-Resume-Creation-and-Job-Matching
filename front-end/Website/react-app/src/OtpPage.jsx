@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import bg from "./assets/BG.png";
 import LockIcon from "@mui/icons-material/Lock";
+import { API_BASE } from "./config/api";
 
 const OtpPage = () => {
   const navigate = useNavigate();
