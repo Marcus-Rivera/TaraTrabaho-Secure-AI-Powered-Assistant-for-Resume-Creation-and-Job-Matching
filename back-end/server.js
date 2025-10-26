@@ -2387,7 +2387,7 @@ app.post("/api/forget-password", async (req, res) => {
     };
 
     // ✅ Hardcoded frontend URL (no .env needed)
-    const resetLink = `https://tara-trabaho-secure-ai-powered-assi.vercel.app/forget?token=${resetToken}`;
+    const resetLink = `https://tara-trabaho-secure-ai-powered-assi.vercel.app/reset?token=${resetToken}`;
     
     console.log('🔗 Generated reset link:', resetLink);
 
