@@ -11,6 +11,8 @@ const OtpPage = () => {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
+  const [canResend, setCanResend] = useState(true);
+  const [resendTimer, setResendTimer] = useState(0);
 
   useEffect(() => {
     if (location.state?.email) {
@@ -18,6 +20,23 @@ const OtpPage = () => {
       // OTP was already sent during signup, so we don't send it again
     }
   }, [location.state]);
+
+  // Countdown timer for resend button
+  useEffect(() => {
+    let interval;
+    if (resendTimer > 0) {
+      interval = setInterval(() => {
+        setResendTimer((prev) => {
+          if (prev <= 1) {
+            setCanResend(true);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [resendTimer]);
 
   const handleChange = (e, index) => {
     const value = e.target.value;
@@ -33,17 +52,39 @@ const OtpPage = () => {
   };
 
   const sendOtp = async (emailToSend = email) => {
+    if (!canResend) {
+      setMessage(`⏳ Please wait ${resendTimer} seconds before resending`);
+      setTimeout(() => setMessage(""), 3000);
+      return;
+    }
+
     try {
+      setCanResend(false);
+      setResendTimer(60); // 60 second cooldown
+
       const res = await fetch(`${API_BASE}/api/send-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: emailToSend }),
       });
       const data = await res.json();
-      setMessage(data.message);
+      
+      if (data.success) {
+        setMessage("✅ " + data.message);
+      } else {
+        setMessage("❌ " + (data.message || "Failed to send OTP"));
+        // If failed, allow immediate retry
+        setCanResend(true);
+        setResendTimer(0);
+      }
+      
+      setTimeout(() => setMessage(""), 3000);
     } catch (err) {
       console.error(err);
-      setMessage("Failed to send OTP");
+      setMessage("❌ Failed to send OTP");
+      setCanResend(true);
+      setResendTimer(0);
+      setTimeout(() => setMessage(""), 3000);
     }
   };
 
@@ -56,6 +97,7 @@ const OtpPage = () => {
       return;
     }
 
+    setIsVerifying(true);
     setMessage("Verifying OTP...");
 
     try {
@@ -94,7 +136,7 @@ const OtpPage = () => {
             } else {
               navigate("/taratrabaho");
             }
-          }, 3000);
+          }, 1500);
           
         } else {
           setMessage("❌ Auto-login failed. Please login manually.");
@@ -148,19 +190,31 @@ const OtpPage = () => {
         <button
           onClick={handleVerify}
           disabled={isVerifying}
-          className="w-full bg-[#2C275C] text-white py-2 rounded-md font-semibold hover:bg-[#1b163e] transition disabled:opacity-50"
+          className="w-full bg-[#2C275C] text-white py-2 rounded-md font-semibold hover:bg-[#1b163e] transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isVerifying ? "Verifying..." : "Verify Code"}
         </button>
 
         <p className="mt-4 text-sm">
           Didn't receive the code?{" "}
-          <button onClick={() => sendOtp()} className="text-blue-600 underline">
-            Resend Code
+          <button 
+            onClick={() => sendOtp()} 
+            disabled={!canResend}
+            className={`font-semibold underline transition ${
+              canResend 
+                ? 'text-blue-600 hover:text-blue-800 cursor-pointer' 
+                : 'text-gray-400 cursor-not-allowed'
+            }`}
+          >
+            {canResend ? "Resend Code" : `Resend in ${resendTimer}s`}
           </button>
         </p>
 
-        {message && <p className="mt-4 text-gray-700 text-sm">{message}</p>}
+        {message && (
+          <p className="mt-4 text-gray-700 text-sm font-medium">
+            {message}
+          </p>
+        )}
       </div>
     </div>
   );
