@@ -469,14 +469,29 @@ const ManageUser = () => {
                     <TableCell>
                       <FormControl size="small" sx={{ minWidth: 120 }}>
                         <Select
-                          value={user.status}
+                          value={user.status || 'approved'}
                           onChange={(e) =>
                             handleStatusChange(user.user_id, e.target.value)
                           }
+                          displayEmpty
                         >
                           <MenuItem value="approved">Approved</MenuItem>
                           <MenuItem value="suspended">Suspended</MenuItem>
                           <MenuItem value="pending">Pending</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </TableCell>
+                    <TableCell>
+                      <FormControl size="small" sx={{ minWidth: 120 }}>
+                        <Select
+                          value={user.role || 'job_seeker'}
+                          onChange={(e) =>
+                            handleRoleChange(user.user_id, e.target.value)
+                          }
+                          displayEmpty
+                        >
+                          <MenuItem value="job_seeker">Job Seeker</MenuItem>
+                          <MenuItem value="admin">Admin</MenuItem>
                         </Select>
                       </FormControl>
                     </TableCell>
