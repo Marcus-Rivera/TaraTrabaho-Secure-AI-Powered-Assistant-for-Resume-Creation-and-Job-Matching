@@ -565,6 +565,41 @@ app.put("/api/users/:user_id", (req, res) => {
   });
 });
 
+
+// ============================================================================
+// DELETE USER
+// ============================================================================
+app.delete("/api/users/:user_id", (req, res) => {
+  const { user_id } = req.params;
+
+  // Start transaction to delete user and all related data
+  db.serialize(() => {
+    // Delete related data first (foreign key constraints)
+    db.run('DELETE FROM user_activity WHERE user_id = ?', [user_id]);
+    db.run('DELETE FROM resume WHERE user_id = ?', [user_id]);
+    db.run('DELETE FROM chathistory WHERE user_id = ?', [user_id]);
+    db.run('DELETE FROM application WHERE user_id = ?', [user_id]);
+    db.run('DELETE FROM saved_jobs WHERE user_id = ?', [user_id]);
+    db.run('DELETE FROM admin_saved_jobs WHERE user_id = ?', [user_id]);
+    db.run('DELETE FROM skills WHERE user_id = ?', [user_id]);
+    db.run('DELETE FROM profile_picture WHERE user_id = ?', [user_id]);
+    
+    // Finally delete the user
+    db.run('DELETE FROM user WHERE user_id = ?', [user_id], function(err) {
+      if (err) {
+        console.error("Error deleting user:", err);
+        return res.status(500).json({ message: "Database error" });
+      }
+
+      if (this.changes === 0) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      res.json({ message: "User and all related data deleted successfully" });
+    });
+  });
+});
+
 // ============================================================================
 // JOB FETCH - Get all jobs
 // ============================================================================

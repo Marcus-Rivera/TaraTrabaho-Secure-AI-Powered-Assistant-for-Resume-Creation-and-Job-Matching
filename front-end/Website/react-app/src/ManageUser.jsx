@@ -30,10 +30,12 @@ import {
   InputAdornment,
   useMediaQuery,
   useTheme,
+  IconButton,
 } from "@mui/material";
 import {
   Search as SearchIcon,
   FilterList as FilterListIcon,
+  Delete as DeleteIcon, 
 } from "@mui/icons-material";
 import { API_BASE } from "./config/api";
 
@@ -58,6 +60,12 @@ const ManageUser = () => {
     open: false,
     message: "",
     severity: "success",
+  });
+
+  const [deleteDialog, setDeleteDialog] = useState({
+    open: false,
+    userId: null,
+    username: null,
   });
 
   useEffect(() => {
@@ -218,6 +226,35 @@ const ManageUser = () => {
       </Container>
     );
   }
+
+  const handleDeleteUser = (userId, username) => {
+    setDeleteDialog({ open: true, userId, username });
+  };
+
+  const handleConfirmDelete = () => {
+    fetch(`${API_BASE}/api/users/${deleteDialog.userId}`, {
+      method: "DELETE",
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Failed to delete user");
+        }
+        setUsers((prevUsers) =>
+          prevUsers.filter((user) => user.user_id !== deleteDialog.userId)
+        );
+        showNotification("User deleted successfully");
+        setDeleteDialog({ open: false, userId: null, username: null });
+      })
+      .catch((err) => {
+        console.error("Error deleting user:", err);
+        showNotification("Failed to delete user", "error");
+        setDeleteDialog({ open: false, userId: null, username: null });
+      });
+  };
+
+  const handleCancelDelete = () => {
+    setDeleteDialog({ open: false, userId: null, username: null });
+  };
 
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
@@ -388,6 +425,17 @@ const ManageUser = () => {
                       </FormControl>
                     </Grid>
                   </Grid>
+                  <Box mt={2} display="flex" justifyContent="flex-end">
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    size="small"
+                    startIcon={<DeleteIcon />}
+                    onClick={() => handleDeleteUser(user.user_id, user.username)}
+                  >
+                    Delete User
+                  </Button>
+                </Box>
                 </CardContent>
               </Card>
             ))
@@ -428,12 +476,17 @@ const ManageUser = () => {
                     Change Role
                   </Typography>
                 </TableCell>
+                <TableCell>
+                  <Typography variant="subtitle2" fontWeight="bold">
+                    Actions
+                  </Typography>
+                </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {filteredUsers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
                     <Typography color="text.secondary">
                       No users found
                     </Typography>
@@ -496,17 +549,19 @@ const ManageUser = () => {
                       </FormControl>
                     </TableCell>
                     <TableCell>
-                      <FormControl size="small" sx={{ minWidth: 120 }}>
-                        <Select
-                          value={user.role}
-                          onChange={(e) =>
-                            handleRoleChange(user.user_id, e.target.value)
-                          }
-                        >
-                          <MenuItem value="job_seeker">Job Seeker</MenuItem>
-                          <MenuItem value="admin">Admin</MenuItem>
-                        </Select>
-                      </FormControl>
+                      <IconButton
+                        onClick={() => handleDeleteUser(user.user_id, user.username)}
+                        size="small"
+                        color="error"
+                        sx={{ 
+                          '&:hover': { 
+                            backgroundColor: 'error.light',
+                            color: 'white'
+                          } 
+                        }}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
                     </TableCell>
                   </TableRow>
                 ))
@@ -539,6 +594,36 @@ const ManageUser = () => {
             color="primary"
           >
             Confirm
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog
+        open={deleteDialog.open}
+        onClose={handleCancelDelete}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ color: 'error.main' }}>
+          ⚠️ Delete User Confirmation
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to permanently delete user{" "}
+            <strong>{deleteDialog.username}</strong>? This action cannot be undone.
+            All user data including applications, resumes, and activity will be deleted.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={handleCancelDelete} color="inherit">
+            Cancel
+          </Button>
+          <Button
+            onClick={handleConfirmDelete}
+            variant="contained"
+            color="error"
+            startIcon={<DeleteIcon />}
+          >
+            Delete User
           </Button>
         </DialogActions>
       </Dialog>
