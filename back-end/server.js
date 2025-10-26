@@ -2349,9 +2349,11 @@ app.post("/api/forget-password", async (req, res) => {
     return res.status(400).json({ success: false, message: "Email is required" });
   }
 
+  const normalizedEmail = email.toLowerCase().trim();
+
   // Check if user exists
   const query = `SELECT * FROM user WHERE LOWER(email) = LOWER(?)`;
-  db.get(query, [email], async (err, user) => {
+  db.get(query, [normalizedEmail], async (err, user) => {
     if (err) {
       console.error("DB Error:", err);
       return res.status(500).json({ success: false, message: "Database error" });
@@ -2374,21 +2376,28 @@ app.post("/api/forget-password", async (req, res) => {
       });
     }
 
-    // Generate reset token
+    // Generate reset token (cryptographically secure)
     const resetToken = crypto.randomBytes(32).toString('hex');
+    
+    // Store token with expiration
     resetTokenStore[resetToken] = {
-      email: user.email,
+      email: normalizedEmail,
+      userId: user.user_id,
       expires: Date.now() + 30 * 60 * 1000 // 30 minutes
     };
 
-    // Create reset link
-    const resetLink = `http://localhost:5173/reset-password/${resetToken}`;
+    // ✅ Hardcoded frontend URL (no .env needed)
+    const resetLink = `https://tara-trabaho-secure-ai-powered-assi.vercel.app/forget?token=${resetToken}`;
+    
+    console.log('🔗 Generated reset link:', resetLink);
+
+    console.log('🔗 Reset link generated:', resetLink);
 
     // Send email using SendGrid
     try {
       const msg = {
-        to: email,
-        from: process.env.SENDGRID_FROM_EMAIL, // Must be verified in SendGrid
+        to: normalizedEmail,
+        from: process.env.SENDGRID_FROM_EMAIL,
         subject: "Reset Your Password - TaraTrabaho",
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -2396,29 +2405,35 @@ app.post("/api/forget-password", async (req, res) => {
               <h2 style="color: #272343; margin: 0;">🔐 Password Reset Request</h2>
             </div>
             
-            <div style="background: white; padding: 20px; border: 1px solid #ddd;">
+            <div style="background: white; padding: 30px; border: 1px solid #ddd; border-radius: 0 0 10px 10px;">
               <p>Hi <strong>${user.firstname}</strong>,</p>
               
               <p>We received a request to reset your password for your TaraTrabaho account.</p>
               
               <div style="text-align: center; margin: 30px 0;">
                 <a href="${resetLink}" 
-                  style="background: #2C275C; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
+                  style="background: #2C275C; color: white; padding: 15px 40px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold; font-size: 16px;">
                   Reset Password
                 </a>
               </div>
               
-              <p style="color: #666; font-size: 14px;">
-                Or copy and paste this link in your browser:<br>
-                <a href="${resetLink}" style="color: #2C275C; word-break: break-all;">${resetLink}</a>
+              <p style="color: #666; font-size: 13px; margin-top: 30px;">
+                If the button doesn't work, copy and paste this link in your browser:<br>
+                <a href="${resetLink}" style="color: #2C275C; word-break: break-all; font-size: 12px;">${resetLink}</a>
               </p>
               
-              <p style="color: #d32f2f; font-weight: bold; margin-top: 20px;">
-                ⚠️ This link will expire in 30 minutes.
+              <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin-top: 20px; border-radius: 4px;">
+                <p style="color: #856404; margin: 0; font-weight: bold;">
+                  ⚠️ This link will expire in 30 minutes.
+                </p>
+              </div>
+              
+              <p style="color: #666; font-size: 13px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;">
+                If you didn't request this password reset, please ignore this email. Your password won't change unless you click the link above.
               </p>
               
-              <p style="color: #666; font-size: 14px; margin-top: 20px;">
-                If you didn't request this, please ignore this email. Your password won't change.
+              <p style="color: #999; font-size: 12px; margin-top: 20px;">
+                For security reasons, this link can only be used once.
               </p>
             </div>
           </div>
@@ -2426,18 +2441,22 @@ app.post("/api/forget-password", async (req, res) => {
       };
 
       await sgMail.send(msg);
-      console.log('✅ Password reset email sent to:', email);
+      console.log('✅ Password reset email sent to:', normalizedEmail);
 
       res.json({ 
         success: true, 
-        message: "If this email exists, a reset link has been sent." 
+        message: "If this email exists, a reset link has been sent. Please check your inbox." 
       });
 
     } catch (mailErr) {
       console.error("❌ Error sending reset email:", mailErr.response?.body || mailErr);
+      
+      // Clean up token if email fails
+      delete resetTokenStore[resetToken];
+      
       res.status(500).json({ 
         success: false, 
-        message: "Failed to send reset email. Please try again." 
+        message: "Failed to send reset email. Please try again later." 
       });
     }
   });
@@ -2454,15 +2473,16 @@ app.get("/api/verify-reset-token/:token", (req, res) => {
   if (!tokenData) {
     return res.status(400).json({ 
       valid: false, 
-      message: "Invalid or expired reset link" 
+      message: "Invalid or expired reset link. Please request a new one." 
     });
   }
 
+  // Check expiration
   if (Date.now() > tokenData.expires) {
     delete resetTokenStore[token];
     return res.status(400).json({ 
       valid: false, 
-      message: "Reset link has expired" 
+      message: "Reset link has expired. Please request a new one." 
     });
   }
 
@@ -2478,6 +2498,7 @@ app.get("/api/verify-reset-token/:token", (req, res) => {
 app.post("/api/reset-password", async (req, res) => {
   const { token, password } = req.body;
 
+  // Validation
   if (!token || !password) {
     return res.status(400).json({ 
       success: false, 
@@ -2488,24 +2509,26 @@ app.post("/api/reset-password", async (req, res) => {
   if (password.length < 6) {
     return res.status(400).json({ 
       success: false, 
-      message: "Password must be at least 6 characters" 
+      message: "Password must be at least 6 characters long" 
     });
   }
 
+  // Verify token
   const tokenData = resetTokenStore[token];
   
   if (!tokenData) {
     return res.status(400).json({ 
       success: false, 
-      message: "Invalid or expired reset link" 
+      message: "Invalid or expired reset link. Please request a new one." 
     });
   }
 
+  // Check expiration
   if (Date.now() > tokenData.expires) {
     delete resetTokenStore[token];
     return res.status(400).json({ 
       success: false, 
-      message: "Reset link has expired" 
+      message: "Reset link has expired. Please request a new one." 
     });
   }
 
@@ -2518,10 +2541,10 @@ app.post("/api/reset-password", async (req, res) => {
     
     db.run(query, [password_hash, tokenData.email], function(err) {
       if (err) {
-        console.error("Error updating password:", err);
+        console.error("❌ Error updating password:", err);
         return res.status(500).json({ 
           success: false, 
-          message: "Failed to reset password" 
+          message: "Failed to reset password. Please try again." 
         });
       }
 
@@ -2532,23 +2555,84 @@ app.post("/api/reset-password", async (req, res) => {
         });
       }
 
-      // Delete used token
+      // ✅ Delete used token (single-use)
       delete resetTokenStore[token];
+
+      console.log('✅ Password reset successful for:', tokenData.email);
+
+      // Optional: Send confirmation email
+      sendPasswordResetConfirmation(tokenData.email);
 
       res.json({ 
         success: true, 
-        message: "Password reset successfully!" 
+        message: "Password reset successfully! You can now login with your new password." 
       });
     });
 
   } catch (error) {
-    console.error("Reset password error:", error);
+    console.error("❌ Reset password error:", error);
     res.status(500).json({ 
       success: false, 
-      message: "Server error" 
+      message: "Server error. Please try again later." 
     });
   }
 });
+
+// ============================================================================
+// Send password reset confirmation email
+// ============================================================================
+async function sendPasswordResetConfirmation(email) {
+  try {
+    const msg = {
+      to: email,
+      from: process.env.SENDGRID_FROM_EMAIL,
+      subject: "Password Reset Confirmation - TaraTrabaho",
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: linear-gradient(135deg, #BAE8E8, #FBDA23); padding: 20px; border-radius: 10px 10px 0 0;">
+            <h2 style="color: #272343; margin: 0;">✅ Password Reset Successful</h2>
+          </div>
+          
+          <div style="background: white; padding: 30px; border: 1px solid #ddd; border-radius: 0 0 10px 10px;">
+            <p>Your TaraTrabaho password has been successfully reset.</p>
+            
+            <p>You can now login with your new password.</p>
+            
+            <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin-top: 20px; border-radius: 4px;">
+              <p style="color: #856404; margin: 0;">
+                <strong>⚠️ Security Alert:</strong> If you didn't make this change, please contact support immediately at taratrabaho@gmail.com
+              </p>
+            </div>
+          </div>
+        </div>
+      `
+    };
+
+    await sgMail.send(msg);
+    console.log('✅ Password reset confirmation sent to:', email);
+  } catch (err) {
+    console.error('❌ Error sending confirmation email:', err);
+  }
+}
+
+// ============================================================================
+// CLEANUP: Remove expired tokens periodically 
+// ============================================================================
+setInterval(() => {
+  const now = Date.now();
+  let cleanedCount = 0;
+  
+  for (const [token, data] of Object.entries(resetTokenStore)) {
+    if (now > data.expires) {
+      delete resetTokenStore[token];
+      cleanedCount++;
+    }
+  }
+  
+  if (cleanedCount > 0) {
+    console.log(`🧹 Cleaned up ${cleanedCount} expired reset tokens`);
+  }
+}, 15 * 60 * 1000); // Run every 15 minutes
 
 // ============================================================================
 // CHECK AUTH METHOD - Determine if account uses Google or Email/Password
