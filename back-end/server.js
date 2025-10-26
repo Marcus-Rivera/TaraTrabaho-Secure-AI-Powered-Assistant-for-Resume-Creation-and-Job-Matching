@@ -290,7 +290,7 @@ app.post("/api/verify-otp", async (req, res) => {
     res.json({ 
       success: true, 
       message: "Account verified and created successfully!",
-      userId: result.lastInsertRowid
+      userId: Number(result.lastInsertRowid)
     });
   } catch (err) {
     console.error("OTP verification error:", err);
@@ -597,7 +597,7 @@ app.post("/api/jobs", async (req, res) => {
 
     res.status(201).json({
       message: "Job added successfully.",
-      job_id: result.lastInsertRowid,
+      job_id: Number(result.lastInsertRowid),
       title, description, location, min_salary, max_salary, vacantleft,
       company, company_email, type, posted, tags, remote: remote || 0
     });
@@ -778,7 +778,7 @@ app.post('/api/resume/save', upload.single('resume'), async (req, res) => {
     res.json({
       success: true,
       message: 'Resume saved successfully',
-      resumeId: result.lastInsertRowid,
+      resumeId: Number(result.lastInsertRowid), 
       filename: filename,
     });
   } catch (error) {
@@ -875,7 +875,7 @@ app.post('/api/chat/save', async (req, res) => {
     res.json({ 
       success: true, 
       message: 'Chat history saved successfully',
-      chatId: result.lastInsertRowid
+      chatId: Number(result.lastInsertRowid)
     });
   } catch (error) {
     console.error('Error in save chat endpoint:', error);
@@ -1247,7 +1247,7 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
       args: [userId, jobId, fullName, email, phone, coverLetter, resumeFilename, resumeData]
     });
 
-    const applicationId = result.lastInsertRowid;
+    const applicationId = Number(result.lastInsertRowid); 
 
     // Track activity
     await db.execute({
@@ -1451,7 +1451,7 @@ app.post('/api/saved-jobs', async (req, res) => {
     res.json({ 
       success: true, 
       message: 'Job saved successfully',
-      savedJobId: result.lastInsertRowid
+      savedJobId: Number(result.lastInsertRowid)
     });
   } catch (err) {
     if (err.message.includes('UNIQUE constraint')) {
@@ -1623,7 +1623,7 @@ app.post('/api/skills', async (req, res) => {
       success: true, 
       message: 'Skill added successfully',
       skill: {
-        skill_id: result.lastInsertRowid,
+        skill_id: Number(result.lastInsertRowid),  // ← Convert BigInt to Number
         skill_name: skillName.trim()
       }
     });
@@ -1886,7 +1886,7 @@ app.post("/api/auth/google", async (req, res) => {
 
       const userResult = await db.execute({
         sql: 'SELECT * FROM user WHERE user_id = ?',
-        args: [insertResult.lastInsertRowid]
+        args: [Number(insertResult.lastInsertRowid)] 
       });
 
       user = userResult.rows[0];
@@ -2284,7 +2284,7 @@ app.post('/api/admin-saved-jobs', async (req, res) => {
     res.json({ 
       success: true, 
       message: 'Job saved successfully',
-      savedJobId: result.lastInsertRowid
+      savedJobId: Number(result.lastInsertRowid) 
     });
   } catch (err) {
     if (err.message.includes('UNIQUE constraint')) {
