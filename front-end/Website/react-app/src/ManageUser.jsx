@@ -17,7 +17,6 @@ import {
   TableRow,
   Paper,
   Chip,
-  IconButton,
   Alert,
   Snackbar,
   Dialog,
@@ -25,22 +24,18 @@ import {
   DialogContent,
   DialogContentText,
   DialogActions,
-  Tabs,
-  Tab,
   Card,
   CardContent,
   Grid,
   InputAdornment,
   useMediaQuery,
   useTheme,
-  Tooltip,
 } from "@mui/material";
 import {
   Search as SearchIcon,
-  Star as StarIcon,
-  StarBorder as StarBorderIcon,
   FilterList as FilterListIcon,
 } from "@mui/icons-material";
+import { API_BASE } from "./config/api";
 
 const ManageUser = () => {
   const theme = useTheme();
@@ -54,8 +49,6 @@ const ManageUser = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [roleFilter, setRoleFilter] = useState("all");
-  const [savedUsers, setSavedUsers] = useState([]);
-  const [activeTab, setActiveTab] = useState(0);
   const [confirmDialog, setConfirmDialog] = useState({
     open: false,
     userId: null,
@@ -71,22 +64,14 @@ const ManageUser = () => {
     const fetchUsers = async () => {
       try {
         setLoading(true);
-        const response = await fetch("http://localhost:5000/api/users");
+        const response = await fetch(`${API_BASE}/api/users`);
         if (!response.ok) {
           throw new Error("Failed to fetch users");
         }
         const data = await response.json();
 
-        const saved = JSON.parse(localStorage.getItem("savedUsers") || "[]");
-        setSavedUsers(saved);
-
-        const usersWithSavedStatus = data.map((user) => ({
-          ...user,
-          isSaved: saved.some((savedUser) => savedUser.user_id === user.user_id),
-        }));
-
-        setUsers(usersWithSavedStatus);
-        setFilteredUsers(usersWithSavedStatus);
+        setUsers(data);
+        setFilteredUsers(data);
       } catch (err) {
         console.error("Error fetching users:", err);
         setError("Failed to load users. Please try again later.");
@@ -100,10 +85,6 @@ const ManageUser = () => {
 
   useEffect(() => {
     let filtered = users;
-
-    if (activeTab === 1) {
-      filtered = filtered.filter((user) => user.isSaved);
-    }
 
     if (searchTerm) {
       filtered = filtered.filter(
@@ -122,7 +103,7 @@ const ManageUser = () => {
     }
 
     setFilteredUsers(filtered);
-  }, [searchTerm, statusFilter, roleFilter, users, activeTab]);
+  }, [searchTerm, statusFilter, roleFilter, users]);
 
   const showNotification = (message, severity = "success") => {
     setNotification({ open: true, message, severity });
@@ -132,37 +113,6 @@ const ManageUser = () => {
     setNotification({ ...notification, open: false });
   };
 
-  const toggleSaveUser = (userId) => {
-    const user = users.find((u) => u.user_id === userId);
-    if (!user) return;
-
-    let updatedSavedUsers;
-    const isCurrentlySaved = savedUsers.some(
-      (savedUser) => savedUser.user_id === userId
-    );
-
-    if (isCurrentlySaved) {
-      updatedSavedUsers = savedUsers.filter(
-        (savedUser) => savedUser.user_id !== userId
-      );
-    } else {
-      updatedSavedUsers = [...savedUsers, user];
-    }
-
-    setSavedUsers(updatedSavedUsers);
-    localStorage.setItem("savedUsers", JSON.stringify(updatedSavedUsers));
-
-    const updatedUsers = users.map((user) =>
-      user.user_id === userId ? { ...user, isSaved: !isCurrentlySaved } : user
-    );
-
-    setUsers(updatedUsers);
-
-    showNotification(
-      isCurrentlySaved ? "User removed from saved" : "User saved successfully"
-    );
-  };
-
   const handleStatusChange = (userId, newStatus) => {
     setUsers((prevUsers) =>
       prevUsers.map((user) =>
@@ -170,7 +120,7 @@ const ManageUser = () => {
       )
     );
 
-    fetch(`http://localhost:5000/api/users/${userId}`, {
+    fetch(`${API_BASE}/api/users/${userId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: newStatus }),
@@ -196,7 +146,7 @@ const ManageUser = () => {
   };
 
   const proceedWithRoleChange = (userId, newRole) => {
-    fetch(`http://localhost:5000/api/users/${userId}/role`, {
+    fetch(`${API_BASE}/api/users/${userId}/role`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role: newRole }),
@@ -352,7 +302,6 @@ const ManageUser = () => {
           <Typography variant="body2" color="text.secondary">
             {filteredUsers.length} user{filteredUsers.length !== 1 ? "s" : ""}{" "}
             found
-            {activeTab === 1 && " in saved users"}
           </Typography>
           <Button
             variant="outlined"
@@ -365,24 +314,12 @@ const ManageUser = () => {
         </Box>
       </Paper>
 
-      <Paper elevation={2} sx={{ mb: 3 }}>
-        <Tabs
-          value={activeTab}
-          onChange={(e, newValue) => setActiveTab(newValue)}
-          variant={isMobile ? "fullWidth" : "standard"}
-          sx={{ borderBottom: 1, borderColor: "divider" }}
-        >
-          <Tab label="All Users" />
-          <Tab label={`Saved Users (${savedUsers.length})`} />
-        </Tabs>
-      </Paper>
-
       {isMobile || isTablet ? (
         <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
           {filteredUsers.length === 0 ? (
-            <Paper elevation={1} sx={{ p: 4, textAlign: "center" }}>
+            <Paper elevation={1} sx={{ p: 4, textAlign:"center" }}>
               <Typography color="text.secondary">
-                {activeTab === 1 ? "No saved users found" : "No users found"}
+                No users found
               </Typography>
             </Paper>
           ) : (
@@ -415,14 +352,6 @@ const ManageUser = () => {
                         />
                       </Box>
                     </Box>
-                    <Tooltip title={user.isSaved ? "Remove from saved" : "Save user"}>
-                      <IconButton
-                        onClick={() => toggleSaveUser(user.user_id)}
-                        color={user.isSaved ? "warning" : "default"}
-                      >
-                        {user.isSaved ? <StarIcon /> : <StarBorderIcon />}
-                      </IconButton>
-                    </Tooltip>
                   </Box>
 
                   <Grid container spacing={2}>
@@ -498,19 +427,14 @@ const ManageUser = () => {
                     Change Role
                   </Typography>
                 </TableCell>
-                <TableCell align="center">
-                  <Typography variant="subtitle2" fontWeight="bold">
-                    Save
-                  </Typography>
-                </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {filteredUsers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
                     <Typography color="text.secondary">
-                      {activeTab === 1 ? "No saved users found" : "No users found"}
+                      No users found
                     </Typography>
                   </TableCell>
                 </TableRow>
@@ -567,16 +491,6 @@ const ManageUser = () => {
                           <MenuItem value="admin">Admin</MenuItem>
                         </Select>
                       </FormControl>
-                    </TableCell>
-                    <TableCell align="center">
-                      <Tooltip title={user.isSaved ? "Remove from saved" : "Save user"}>
-                        <IconButton
-                          onClick={() => toggleSaveUser(user.user_id)}
-                          color={user.isSaved ? "warning" : "default"}
-                        >
-                          {user.isSaved ? <StarIcon /> : <StarBorderIcon />}
-                        </IconButton>
-                      </Tooltip>
                     </TableCell>
                   </TableRow>
                 ))

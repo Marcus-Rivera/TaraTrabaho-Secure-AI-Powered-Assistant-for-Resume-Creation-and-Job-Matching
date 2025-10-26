@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import bg from "./assets/BG.png";
 import LockIcon from "@mui/icons-material/Lock";
+import { API_BASE } from "./config/api";
 
 const OtpPage = () => {
   const navigate = useNavigate();
@@ -32,7 +33,7 @@ const OtpPage = () => {
 
   const sendOtp = async (emailToSend = email) => {
     try {
-      const res = await fetch("http://localhost:5000/api/send-otp", {
+      const res = await fetch(`${API_BASE}/api/send-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: emailToSend }),
@@ -57,7 +58,7 @@ const OtpPage = () => {
     setMessage("Verifying OTP...");
 
     try {
-      const res = await fetch("http://localhost:5000/api/verify-otp", {
+      const res = await fetch(`${API_BASE}/api/verify-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, otp: enteredOtp }),
@@ -68,7 +69,7 @@ const OtpPage = () => {
         setMessage("✅ OTP verified successfully! Auto-login in progress...");
         
         // ✅ Auto-login after successful verification
-        const loginRes = await fetch("http://localhost:5000/api/auto-login", {
+        const loginRes = await fetch(`${API_BASE}api/auto-login`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email }),

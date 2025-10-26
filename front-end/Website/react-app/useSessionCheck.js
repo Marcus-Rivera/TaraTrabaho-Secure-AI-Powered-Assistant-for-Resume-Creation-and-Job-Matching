@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { API_BASE } from "./src/config/api";
 
 /**
  * Custom React hook that checks for a valid session token.
@@ -24,7 +25,7 @@ export const useSessionCheck = () => {
     }
 
     // Verify token with backend
-    fetch("http://localhost:5000/api/verifyToken", {
+    fetch(`${API_BASE}/api/verifyToken`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

@@ -41,6 +41,7 @@ import DescriptionIcon from '@mui/icons-material/Description';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
 import { useSessionCheck } from "../useSessionCheck";
+import { API_BASE } from "./config/api";
 
 const JobListingsSection = () => {
   const { userData } = useSessionCheck();
@@ -78,7 +79,7 @@ const JobListingsSection = () => {
     const fetchJobs = async () => {
       try {
         setLoading(true);
-        const response = await fetch('http://localhost:5000/api/jobs');
+        const response = await fetch(`${API_BASE}/api/jobs`);
         
         if (!response.ok) {
           throw new Error('Failed to fetch jobs');
@@ -122,12 +123,12 @@ const JobListingsSection = () => {
       if (!userData?.email) return;
 
       try {
-        const profileResponse = await fetch(`http://localhost:5000/api/profile/${userData.email}`);
+        const profileResponse = await fetch(`${API_BASE}/api/profile/${userData.email}`);
         const userProfile = await profileResponse.json();
         
         if (!userProfile || !userProfile.user_id) return;
 
-        const resumeResponse = await fetch(`http://localhost:5000/api/resume/user/${userProfile.user_id}`);
+        const resumeResponse = await fetch(`${API_BASE}/api/resume/user/${userProfile.user_id}`);
         const resumeData = await resumeResponse.json();
 
         if (resumeResponse.ok) {
@@ -147,12 +148,12 @@ const JobListingsSection = () => {
       if (!userData?.email) return;
 
       try {
-        const profileResponse = await fetch(`http://localhost:5000/api/profile/${userData.email}`);
+        const profileResponse = await fetch(`${API_BASE}/api/profile/${userData.email}`);
         const userProfile = await profileResponse.json();
         
         if (!userProfile || !userProfile.user_id) return;
 
-        const response = await fetch(`http://localhost:5000/api/saved-jobs/${userProfile.user_id}`);
+        const response = await fetch(`${API_BASE}/api/saved-jobs/${userProfile.user_id}`);
         const data = await response.json();
 
         if (data.success) {
@@ -191,7 +192,7 @@ const JobListingsSection = () => {
     }
 
     try {
-      const profileResponse = await fetch(`http://localhost:5000/api/profile/${userData.email}`);
+      const profileResponse = await fetch(`${API_BASE}/api/profile/${userData.email}`);
       const userProfile = await profileResponse.json();
       
       if (!userProfile || !userProfile.user_id) {
@@ -204,7 +205,7 @@ const JobListingsSection = () => {
 
       if (isSaved) {
         // Unsave the job
-        const response = await fetch(`http://localhost:5000/api/saved-jobs/${userId}/${jobId}`, {
+        const response = await fetch(`${API_BASE}/api/saved-jobs/${userId}/${jobId}`, {
           method: 'DELETE',
         });
 
@@ -218,7 +219,7 @@ const JobListingsSection = () => {
         }
       } else {
         // Save the job
-        const response = await fetch('http://localhost:5000/api/saved-jobs', {
+        const response = await fetch(`${API_BASE}/api/saved-jobs`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId, jobId }),
@@ -322,7 +323,7 @@ const JobListingsSection = () => {
       }
 
       // Submit application
-      const response = await fetch('http://localhost:5000/api/jobs/apply', {
+      const response = await fetch(`${API_BASE}/api/jobs/apply`, {
         method: 'POST',
         body: formData,
       });

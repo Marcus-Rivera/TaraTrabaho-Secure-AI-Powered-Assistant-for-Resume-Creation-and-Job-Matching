@@ -6,9 +6,14 @@ const bodyParser = require("body-parser");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const SECRET_KEY = "your-secret-key"; // Use .env for real projects
-const nodemailer = require("nodemailer");
 const crypto = require("crypto");
 const otpStore = {};
+
+//SendGrid
+const sgMail = require('@sendgrid/mail');
+require("dotenv").config();
+
+sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
 // Reset PW
 const resetTokenStore = {};
@@ -20,14 +25,14 @@ const path = require('path');
 // Initialize Express application
 const app = express();
 
-// Gemini API Key
-const GEMINI_API_KEY = "AIzaSyD-QXNB8c8jiYNisBRSU33GcyP1txqhjt0";
+// API Key
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 // Middleware configuration
 app.use(cors());
 app.use(express.json());
 app.use(bodyParser.json());
-app.set("trust proxy", true);
+app.set("trust proxy", 1);
 
 // Connect to SQLite database
 const db = new sqlite3.Database("tratrabaho.db");
@@ -383,22 +388,44 @@ app.post("/api/signup", async (req, res) => {
       // Generate 4-digit OTP
       const otp = crypto.randomInt(1000, 9999).toString();
       otpStore[normalizedEmail] = { otp, expires: Date.now() + 5 * 60 * 1000 };
-      const transporter_job = nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-          user: "taratrabaho0@gmail.com",
-          pass: "jkdv bdfk xryh fvql",
-        },
-      });
 
       // Send OTP via email
       try {
-        await transporter_job.sendMail({
-          from: '"TaraTrabaho Job" <taratrabaho0@gmail.com>',
+        const msg = {
           to: normalizedEmail,
-          subject: "Your TaraTrabaho OTP Code",
-          text: `Your OTP code is ${otp}. It will expire in 5 minutes.`,
-        });
+          from: process.env.SENDGRID_FROM_EMAIL, // Must be verified in SendGrid
+          subject: 'Tratrabaho Email Verification OTP',
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <div style="background: linear-gradient(135deg, #BAE8E8, #FBDA23); padding: 20px; border-radius: 10px 10px 0 0;">
+                <h2 style="color: #272343; margin: 0;">✉️ Email Verification</h2>
+              </div>
+              
+              <div style="background: white; padding: 30px; border: 1px solid #ddd;">
+                <p>Welcome to <strong>TaraTrabaho</strong>!</p>
+                
+                <p>Your verification code is:</p>
+                
+                <div style="text-align: center; margin: 30px 0;">
+                  <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #2C275C; background: #f0f9ff; padding: 15px 30px; border-radius: 8px; display: inline-block;">
+                    ${otp}
+                  </span>
+                </div>
+                
+                <p style="color: #d32f2f; font-weight: bold;">
+                  ⚠️ This code will expire in 5 minutes.
+                </p>
+                
+                <p style="color: #666; font-size: 14px; margin-top: 20px;">
+                  If you didn't request this code, please ignore this email.
+                </p>
+              </div>
+            </div>
+          `
+        };
+
+        await sgMail.send(msg);
+        console.log('✅ OTP email sent to:', normalizedEmail);
 
         res.json({
           status: "pending",
@@ -406,9 +433,10 @@ app.post("/api/signup", async (req, res) => {
           email: normalizedEmail,
         });
       } catch (mailErr) {
-        console.error("Error sending OTP email:", mailErr);
+        console.error("❌ Error sending OTP email:", mailErr.response?.body || mailErr);
         // Clean up temporary data if email fails
-        delete tempUserStore[email];
+        delete tempUserStore[normalizedEmail];
+        delete otpStore[normalizedEmail];
         res.status(500).json({
           status: "error",
           message: "Failed to send OTP email. Please try again.",
@@ -1058,7 +1086,7 @@ app.post('/api/jobs/recommend', async (req, res) => {
           objective: resumeData.objective || '',
           summary: resumeData.summary || '',
         };
-        console.log('✅ Resume found for user:', userId, '- Starting AI matching...');
+        console.log('Resume found for user:', userId, '- Starting AI matching...');
       } catch (e) {
         console.error('Error parsing resume data:', e);
         return res.json({
@@ -1275,20 +1303,8 @@ app.get('/api/stats/:userId', (req, res) => {
 // Add this to your server.js file
 // Make sure to install nodemailer: npm install nodemailer
 
-
-// Email Configuration (add this near the top of server.js)
-const EMAIL_CONFIG_JOB = {
-  service: 'gmail', // or 'outlook', 'yahoo', etc.
-  auth: {
-    user: 'taratrabaho0@gmail.com', // Your email
-    pass: 'jkdv bdfk xryh fvql'
-  }
-};
-
-const transporter = nodemailer.createTransport(EMAIL_CONFIG_JOB);
-
 // ============================================================================
-// JOB APPLICATION ENDPOINT - Complete Version
+// JOB APPLICATION ENDPOINT 
 // ============================================================================
 app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
   try {
@@ -1376,6 +1392,7 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
       );
     });
 
+    // Track activity
     const activityQuery = `
       INSERT INTO user_activity (user_id, activity_type, activity_date)
       VALUES (?, 'job_applied', date('now'))
@@ -1385,9 +1402,9 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
     });
 
     // 📧 SEND EMAIL TO COMPANY
-    const companyMailOptions = {
-      from: '"TaraTrabaho Job" <taratrabaho0@gmail.com>',
+    const companyMsg = {
       to: job.company_email,
+      from: process.env.SENDGRID_FROM_EMAIL,
       replyTo: email, // Company can reply directly to applicant
       subject: `New Job Application: ${job.title} - ${fullName}`,
       html: `
@@ -1419,18 +1436,21 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
       `,
       attachments: [
         {
+          content: resumeData.toString('base64'),
           filename: resumeFilename,
-          content: resumeData,
+          type: 'application/pdf',
+          disposition: 'attachment'
         }
       ]
     };
 
-    await transporter.sendMail(companyMailOptions);
+    await sgMail.send(companyMsg);
+    console.log('✅ Application email sent to company:', job.company_email);
 
     // 📧 SEND CONFIRMATION EMAIL TO APPLICANT
-    const applicantMailOptions = {
-      from: '"TaraTrabaho Job" <taratrabaho0@gmail.com>',
+    const applicantMsg = {
       to: email,
+      from: process.env.SENDGRID_FROM_EMAIL,
       subject: `✅ Application Submitted - ${job.title} at ${job.company}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -1464,7 +1484,8 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
       `
     };
 
-    await transporter.sendMail(applicantMailOptions);
+    await sgMail.send(applicantMsg);
+    console.log('✅ Confirmation email sent to applicant:', email);
 
     // Update job vacancy count
     await new Promise((resolve, reject) => {
@@ -1485,7 +1506,7 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error in application endpoint:', error);
+    console.error('❌ Error in application endpoint:', error.response?.body || error);
     res.status(500).json({ 
       success: false, 
       error: 'Failed to submit application. Please try again.' 
@@ -2090,7 +2111,7 @@ app.post("/api/auth/google", async (req, res) => {
             firstname, lastname, username, email, google_id, 
             verified, role, status, password_hash
           )
-          VALUES (?, ?, ?, ?, ?, 1, 'job_seeker', 'active', '')
+          VALUES (?, ?, ?, ?, ?, 1, 'job_seeker', 'approved', '')
         `;
 
         await new Promise((resolve, reject) => {
@@ -2248,19 +2269,11 @@ app.post("/api/forget-password", async (req, res) => {
     // Create reset link
     const resetLink = `http://localhost:5173/reset-password/${resetToken}`;
 
-    // Send email
-    const transporter_reset = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: "taratrabaho0@gmail.com",
-        pass: "jkdv bdfk xryh fvql",
-      },
-    });
-
+    // Send email using SendGrid
     try {
-      await transporter_reset.sendMail({
-        from: '"TaraTrabaho" <taratrabaho0@gmail.com>',
+      const msg = {
         to: email,
+        from: process.env.SENDGRID_FROM_EMAIL, // Must be verified in SendGrid
         subject: "Reset Your Password - TaraTrabaho",
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -2275,7 +2288,7 @@ app.post("/api/forget-password", async (req, res) => {
               
               <div style="text-align: center; margin: 30px 0;">
                 <a href="${resetLink}" 
-                   style="background: #2C275C; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
+                  style="background: #2C275C; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
                   Reset Password
                 </a>
               </div>
@@ -2295,7 +2308,10 @@ app.post("/api/forget-password", async (req, res) => {
             </div>
           </div>
         `
-      });
+      };
+
+      await sgMail.send(msg);
+      console.log('✅ Password reset email sent to:', email);
 
       res.json({ 
         success: true, 
@@ -2303,7 +2319,7 @@ app.post("/api/forget-password", async (req, res) => {
       });
 
     } catch (mailErr) {
-      console.error("Error sending reset email:", mailErr);
+      console.error("❌ Error sending reset email:", mailErr.response?.body || mailErr);
       res.status(500).json({ 
         success: false, 
         message: "Failed to send reset email. Please try again." 
@@ -2453,6 +2469,91 @@ app.post("/api/check-auth-method", (req, res) => {
       isGoogleAccount: isGoogleOnly,
       exists: true 
     });
+  });
+});
+
+
+// ============================================================================
+// ADMIN SAVED JOBS ENDPOINTS
+// ============================================================================
+
+// GET admin's saved jobs
+app.get('/api/admin-saved-jobs/:userId', (req, res) => {
+  const { userId } = req.params;
+  
+  console.log('📥 Fetching saved jobs for user:', userId);
+  
+  const query = `
+    SELECT saved_job_id, job_id, saved_at
+    FROM admin_saved_jobs
+    WHERE user_id = ?
+    ORDER BY saved_at DESC
+  `;
+  
+  db.all(query, [userId], (err, rows) => {
+    if (err) {
+      console.error('❌ Error fetching admin saved jobs:', err);
+      return res.status(500).json({ error: 'Failed to fetch saved jobs' });
+    }
+    
+    console.log('✅ Found saved jobs:', rows);
+    res.json({ success: true, savedJobs: rows });
+  });
+});
+
+// SAVE a job (admin)
+app.post('/api/admin-saved-jobs', (req, res) => {
+  const { userId, jobId } = req.body;
+  
+  if (!userId || !jobId) {
+    return res.status(400).json({ error: 'userId and jobId are required' });
+  }
+  
+  console.log('💾 Saving job:', jobId, 'for user:', userId);
+  
+  const query = `
+    INSERT INTO admin_saved_jobs (user_id, job_id)
+    VALUES (?, ?)
+  `;
+  
+  db.run(query, [userId, jobId], function(err) {
+    if (err) {
+      if (err.message.includes('UNIQUE constraint')) {
+        return res.status(400).json({ error: 'Job already saved' });
+      }
+      console.error('❌ Error saving job:', err);
+      return res.status(500).json({ error: 'Failed to save job' });
+    }
+    
+    console.log('✅ Job saved successfully with ID:', this.lastID);
+    res.json({ 
+      success: true, 
+      message: 'Job saved successfully',
+      savedJobId: this.lastID
+    });
+  });
+});
+
+// UNSAVE a job (admin)
+app.delete('/api/admin-saved-jobs/:userId/:jobId', (req, res) => {
+  const { userId, jobId } = req.params;
+  
+  console.log('🗑️ Unsaving job:', jobId, 'for user:', userId);
+  
+  const query = 'DELETE FROM admin_saved_jobs WHERE user_id = ? AND job_id = ?';
+  
+  db.run(query, [userId, jobId], function(err) {
+    if (err) {
+      console.error('❌ Error unsaving job:', err);
+      return res.status(500).json({ error: 'Failed to unsave job' });
+    }
+    
+    if (this.changes === 0) {
+      return res.status(404).json({ error: 'Saved job not found' });
+    }
+    
+    console.log('✅ Job unsaved successfully');
+    res.json({ success: true, message: 'Job unsaved successfully' });
   });
 });
 // ============================================================================

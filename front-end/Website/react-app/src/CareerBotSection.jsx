@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import { useSessionCheck } from "../useSessionCheck";
 import SessionExpiredModal from "../SessionExpiredModal";
 import { Alert } from "@mui/material";
+import { API_BASE } from "./config/api";
 
 const CareerBotSection = () => {
   const [messages, setMessages] = useState([
@@ -150,7 +151,7 @@ const CareerBotSection = () => {
         return null;
       }
       
-      const userResponse = await fetch(`http://localhost:5000/api/profile/${userData.email}`);
+      const userResponse = await fetch(`${API_BASE}/api/profile/${userData.email}`);
       const userProfile = await userResponse.json();
       
       if (!userProfile || !userProfile.user_id) {
@@ -165,7 +166,7 @@ const CareerBotSection = () => {
       
       if (lastSavedChatId) {
         //console.log('Updating existing chat:', lastSavedChatId);
-        response = await fetch(`http://localhost:5000/api/chat/update/${lastSavedChatId}`, {
+        response = await fetch(`${API_BASE}/api/chat/update/${lastSavedChatId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -176,7 +177,7 @@ const CareerBotSection = () => {
         data = await response.json();
       } else {
         console.log('Creating new chat');
-        response = await fetch('http://localhost:5000/api/chat/save', {
+        response = await fetch(`${API_BASE}/api/chat/save`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -220,12 +221,12 @@ const CareerBotSection = () => {
       if (!userData) return;
       
       setLoadingChats(true);
-      const userResponse = await fetch(`http://localhost:5000/api/profile/${userData.email}`);
+      const userResponse = await fetch(`${API_BASE}/api/profile/${userData.email}`);
       const userProfile = await userResponse.json();
       
       if (!userProfile || !userProfile.user_id) return;
       
-      const response = await fetch(`http://localhost:5000/api/chat/history/${userProfile.user_id}`);
+      const response = await fetch(`${API_BASE}/api/chat/history/${userProfile.user_id}`);
       const data = await response.json();
       
       if (data.success) {
@@ -268,7 +269,7 @@ const CareerBotSection = () => {
         ? `${instruction}\n\nUser input: ${userInput}`
         : userInput;
 
-      const res = await fetch("http://localhost:5000/api/gemini", {
+      const res = await fetch(`${API_BASE}/api/gemini`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt }),
@@ -880,7 +881,7 @@ const CareerBotSection = () => {
       }
       
       // Fetch user_id from backend using email (same pattern as ProfileSection)
-      const userResponse = await fetch(`http://localhost:5000/api/profile/${userData.email}`);
+      const userResponse = await fetch(`${API_BASE}/api/profile/${userData.email}`);
       const userProfile = await userResponse.json();
       
       if (!userProfile || !userProfile.user_id) {
@@ -891,7 +892,7 @@ const CareerBotSection = () => {
       formData.append('resume', pdfBlob, filename);
       formData.append('userId', userProfile.user_id);
       formData.append('resumeData', JSON.stringify(resumeData));
-      const response = await fetch('http://localhost:5000/api/resume/save', {
+      const response = await fetch(`${API_BASE}/api/resume/save`, {
         method: 'POST',
         body: formData,
       });
@@ -937,7 +938,6 @@ const CareerBotSection = () => {
   };
 
   // Load last chat from database
-  // Load last chat from database (called on initial mount if no localStorage)
 const loadLastChatFromDatabase = async () => {
   try {
     if (!userData) {
@@ -946,7 +946,7 @@ const loadLastChatFromDatabase = async () => {
     }
     
     // Get user_id
-    const userResponse = await fetch(`http://localhost:5000/api/profile/${userData.email}`);
+    const userResponse = await fetch(`${API_BASE}/api/profile/${userData.email}`);
     const userProfile = await userResponse.json();
     
     if (!userProfile || !userProfile.user_id) {
@@ -957,7 +957,7 @@ const loadLastChatFromDatabase = async () => {
     // ==========================================
     // 🔑 KEY QUERY: Get LAST chat by timestamp
     // ==========================================
-    const response = await fetch(`http://localhost:5000/api/chat/history/${userProfile.user_id}`);
+    const response = await fetch(`${API_BASE}/api/chat/history/${userProfile.user_id}`);
     const data = await response.json();
     
     if (data.success && data.data.length > 0) {
@@ -1135,7 +1135,7 @@ const loadLastChatFromDatabase = async () => {
     try {
       console.log('Deleting chat:', chatId);
       
-      const response = await fetch(`http://localhost:5000/api/chat/${chatId}`, {
+      const response = await fetch(`${API_BASE}/api/chat/${chatId}`, {
         method: 'DELETE',
       });
       

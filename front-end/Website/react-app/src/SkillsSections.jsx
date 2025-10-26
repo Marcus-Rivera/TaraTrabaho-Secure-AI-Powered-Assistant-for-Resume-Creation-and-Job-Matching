@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import SessionExpiredModal from "../SessionExpiredModal";
 import { useSessionCheck } from "../useSessionCheck";
 import { Snackbar, Alert } from "@mui/material"; // ✅ MUI notification
+import { API_BASE } from "./config/api";
 
 const SkillsSection = ({ userId }) => {
   const [skills, setSkills] = useState([]);
@@ -24,7 +25,7 @@ const SkillsSection = ({ userId }) => {
   const fetchSkills = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`http://localhost:5000/api/skills/${userId}`);
+      const response = await fetch(`${API_BASE}/api/skills/${userId}`);
       const data = await response.json();
 
       if (data.success) {
@@ -66,7 +67,7 @@ const SkillsSection = ({ userId }) => {
     }
 
     try {
-      const response = await fetch("http://localhost:5000/api/skills", {
+      const response = await fetch(`${API_BASE}/api/skills`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -109,7 +110,7 @@ const SkillsSection = ({ userId }) => {
   const handleRemoveSkill = async (skillToRemove) => {
     try {
       const response = await fetch(
-        `http://localhost:5000/api/skills/${skillToRemove.id}`,
+        `${API_BASE}/api/skills/${skillToRemove.id}`,
         { method: "DELETE" }
       );
       const data = await response.json();

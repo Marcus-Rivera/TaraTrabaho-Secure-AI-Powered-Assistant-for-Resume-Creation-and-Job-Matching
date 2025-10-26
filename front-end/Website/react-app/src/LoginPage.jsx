@@ -6,6 +6,7 @@ import Alert from '@mui/material/Alert';
 import { useNavigate } from "react-router-dom";
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import { jwtDecode } from 'jwt-decode';
+import { API_BASE } from "./config/api";
 
 //Google Client ID
 const GOOGLE_CLIENT_ID = "951421250117-tsbuglbst1a4oktfvhd6ht6j4komoue0.apps.googleusercontent.com";
@@ -96,7 +97,7 @@ function LoginForm() {
   setIsLoading(true);
 
   try {
-    const response = await fetch("http://localhost:5000/api/login", {
+    const response = await fetch(`${API_BASE}/api/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password })
@@ -124,6 +125,7 @@ function LoginForm() {
 
     if (response.ok && data.success) {
       sessionStorage.setItem("token", data.token);
+      window.dispatchEvent(new Event('tokenUpdated'));
       setEmail("");
       setPassword("");
       setErrors({});
@@ -165,7 +167,7 @@ function LoginForm() {
       console.log("📧 Google user info:", decoded);
 
       // Send to backend
-      const response = await fetch("http://localhost:5000/api/auth/google", {
+      const response = await fetch(`${API_BASE}/api/auth/google`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -182,6 +184,7 @@ function LoginForm() {
 
       if (data.success) {
         sessionStorage.setItem("token", data.token);
+        window.dispatchEvent(new Event('tokenUpdated'));
         console.log("✅ Google login successful!");
         
         const role = data.user.role;

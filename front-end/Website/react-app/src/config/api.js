@@ -1,0 +1,1 @@
+export const API_BASE = "https://taratrabaho-secure-ai-powered-assistant.onrender.com";

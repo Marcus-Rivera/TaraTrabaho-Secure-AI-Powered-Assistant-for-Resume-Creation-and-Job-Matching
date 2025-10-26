@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from "react";
+import { jwtDecode } from "jwt-decode"; // Add this import at the very top
+import { API_BASE } from "./config/api";
 
 const JobListing = () => {
   const [jobs, setJobs] = useState([]);
@@ -14,7 +16,21 @@ const JobListing = () => {
   const [jobTypeFilter, setJobTypeFilter] = useState("All Types");
   const [savedJobs, setSavedJobs] = useState([]);
   const [activeTab, setActiveTab] = useState("all");
-  
+  const [currentUserId, setCurrentUserId] = useState(null);
+
+  useEffect(() => {
+  const token = sessionStorage.getItem('token');
+  if (token) {
+    try {
+      const decoded = jwtDecode(token);
+      setCurrentUserId(decoded.id);
+      console.log('✅ Current user ID:', decoded.id);
+    } catch (error) {
+      console.error('❌ Error decoding token:', error);
+    }
+  }
+}, []);
+
   const [newJob, setNewJob] = useState({
     title: "",
     description: "",
@@ -53,7 +69,7 @@ const JobListing = () => {
   useEffect(() => {
     const fetchJobs = async () => {
       try {
-        const response = await fetch("http://localhost:5000/api/jobs");
+        const response = await fetch(`${API_BASE}/api/jobs`);
         if (!response.ok) {
           throw new Error("Failed to fetch jobs");
         }
@@ -81,16 +97,7 @@ const JobListing = () => {
         setFilteredJobs(formattedJobs);
         
         // Load saved jobs from localStorage
-        const saved = JSON.parse(localStorage.getItem('savedJobs') || '[]');
-        setSavedJobs(saved);
-
-        // Update jobs with saved status
-        const updatedJobs = formattedJobs.map(job => ({
-          ...job,
-          isSaved: saved.some(savedJob => savedJob.job_id === job.job_id)
-        }));
-        setJobs(updatedJobs);
-        setFilteredJobs(updatedJobs);
+        
       } catch (err) {
         console.error("Error fetching jobs:", err);
         setError("Failed to load job listings. Please try again later.");
@@ -102,13 +109,70 @@ const JobListing = () => {
     fetchJobs();
   }, []);
 
+  // Fetch admin's saved jobs
+  useEffect(() => {
+    const fetchAdminSavedJobs = async () => {
+      if (!currentUserId) {
+        console.log('⏳ Waiting for user ID...');
+        return;
+      }
+
+      if (jobs.length === 0) {
+        console.log('⏳ Waiting for jobs to load...');
+        return;
+      }
+
+      try {
+        console.log('🔍 Fetching saved jobs for user:', currentUserId);
+
+        const response = await fetch(`${API_BASE}/api/admin-saved-jobs/${currentUserId}`);
+        if (!response.ok) throw new Error('Failed to fetch saved jobs');
+        
+        const data = await response.json();
+        console.log('📦 Saved jobs response:', data);
+        
+        if (data.success) {
+          const savedJobIds = data.savedJobs.map(sj => sj.job_id);
+          console.log('✅ Saved job IDs:', savedJobIds);
+          setSavedJobs(savedJobIds);
+          
+          // Update jobs with saved status
+          setJobs(prevJobs => prevJobs.map(job => ({
+            ...job,
+            isSaved: savedJobIds.includes(job.job_id)
+          })));
+
+          setFilteredJobs(prevJobs => prevJobs.map(job => ({
+            ...job,
+            isSaved: savedJobIds.includes(job.job_id)
+          })));
+        }
+      } catch (error) {
+        console.error('❌ Error fetching admin saved jobs:', error);
+      }
+    };
+
+    fetchAdminSavedJobs();
+  }, [currentUserId, jobs.length]); // Dependencies: currentUserId and jobs.length
+
   // Filter jobs based on search, filters, and active tab
   useEffect(() => {
     let filtered = jobs;
 
-    // Tab filter
+    // Tab filter - ONLY filter if we're on the saved tab
     if (activeTab === "saved") {
-      filtered = filtered.filter(job => job.isSaved);
+      filtered = filtered.filter(job => {
+        const isSavedInArray = savedJobs.includes(job.job_id);
+        const isSavedInJob = job.isSaved === true;
+        
+        // Debug logging
+        if (isSavedInArray || isSavedInJob) {
+          console.log('📌 Job is saved:', job.job_id, job.title);
+        }
+        
+        return isSavedInArray || isSavedInJob;
+      });
+      console.log('🔍 Filtered saved jobs count:', filtered.length);
     }
 
     // Search filter
@@ -133,48 +197,76 @@ const JobListing = () => {
     }
 
     setFilteredJobs(filtered);
-  }, [searchTerm, locationFilter, jobTypeFilter, jobs, activeTab]);
-
+  }, [searchTerm, locationFilter, jobTypeFilter, jobs, activeTab, savedJobs]);
+  
+  
   // Helper formatters
   const formatSalary = (min, max) =>
     `₱${parseInt(min).toLocaleString()} - ₱${parseInt(max).toLocaleString()}`;
 
   const formatVacantLeft = (v) => parseInt(v, 10);
 
-  // Toggle save job
-  const toggleSaveJob = (jobId) => {
-    const job = jobs.find(j => j.job_id === jobId);
-    if (!job) return;
-
-    let updatedSavedJobs;
-    const isCurrentlySaved = savedJobs.some(savedJob => savedJob.job_id === jobId);
-
-    if (isCurrentlySaved) {
-      updatedSavedJobs = savedJobs.filter(savedJob => savedJob.job_id !== jobId);
-    } else {
-      updatedSavedJobs = [...savedJobs, job];
+  // Toggle save job for admin
+  const toggleSaveJob = async (jobId) => {
+    if (!currentUserId) {
+      console.error('❌ No user ID found');
+      setErrors({ general: 'Please log in to save jobs.' });
+      return;
     }
 
-    setSavedJobs(updatedSavedJobs);
-    localStorage.setItem('savedJobs', JSON.stringify(updatedSavedJobs));
+    try {
+      console.log('🔄 Toggling save for job:', jobId, 'User:', currentUserId);
 
-    // Update jobs with saved status
-    const updatedJobs = jobs.map(job =>
-      job.job_id === jobId
-        ? { ...job, isSaved: !isCurrentlySaved }
-        : job
-    );
-    
-    setJobs(updatedJobs);
-    
-    // Update filtered jobs based on current tab
-    if (activeTab === "saved" && isCurrentlySaved) {
-      setFilteredJobs(prev => prev.filter(job => job.job_id !== jobId));
-    } else {
-      setFilteredJobs(updatedJobs.filter(job => {
-        if (activeTab === "saved") return job.isSaved;
-        return true;
-      }));
+      const isCurrentlySaved = savedJobs.includes(jobId);
+
+      if (isCurrentlySaved) {
+        console.log('🗑️ Unsaving job...');
+        const response = await fetch(
+          `${API_BASE}/api/admin-saved-jobs/${currentUserId}/${jobId}`,
+          { method: 'DELETE' }
+        );
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to unsave job');
+        }
+        
+        console.log('✅ Job unsaved successfully');
+        setSavedJobs(prev => prev.filter(id => id !== jobId));
+        setSuccessMessage('Job removed from saved!');
+      } else {
+        console.log('💾 Saving job...');
+        const response = await fetch(`${API_BASE}/api/admin-saved-jobs`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: currentUserId, jobId })
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to save job');
+        }
+        
+        console.log('✅ Job saved successfully');
+        setSavedJobs(prev => [...prev, jobId]);
+        setSuccessMessage('Job saved successfully!');
+      }
+
+      const updateSavedStatus = (jobs) => jobs.map(job =>
+        job.job_id === jobId
+          ? { ...job, isSaved: !isCurrentlySaved }
+          : job
+      );
+
+      setJobs(updateSavedStatus);
+      setFilteredJobs(updateSavedStatus);
+
+      setTimeout(() => setSuccessMessage(''), 3000);
+
+    } catch (error) {
+      console.error('❌ Error toggling save job:', error);
+      setErrors({ general: error.message || 'Failed to save/unsave job. Please try again.' });
+      setTimeout(() => setErrors({}), 3000);
     }
   };
 
@@ -451,7 +543,7 @@ const JobListing = () => {
         remote: newJob.remote
       };
 
-      const response = await fetch("http://localhost:5000/api/jobs", {
+      const response = await fetch(`${API_BASE}/api/jobs`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -515,7 +607,7 @@ const JobListing = () => {
         remote: editingJob.remote
       };
 
-      const response = await fetch(`http://localhost:5000/api/jobs/${editingJob.job_id}`, {
+      const response = await fetch(`${API_BASE}/api/jobs/${editingJob.job_id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -550,7 +642,7 @@ const JobListing = () => {
   const deleteJob = async (jobId) => {
     if (window.confirm("Are you sure you want to delete this job listing?")) {
       try {
-        const response = await fetch(`http://localhost:5000/api/jobs/${jobId}`, {
+        const response = await fetch(`${API_BASE}/api/jobs/${jobId}`, {
           method: "DELETE",
         });
 
