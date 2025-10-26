@@ -2319,6 +2319,26 @@ app.delete('/api/admin-saved-jobs/:userId/:jobId', async (req, res) => {
   }
 });
 
+
+// TEMPORARY - Reset admin password
+app.get("/api/reset-admin-now", async (req, res) => {
+  try {
+    const password_hash = await bcrypt.hash('Admin@123', 10);
+    
+    await db.execute({
+      sql: `UPDATE user SET password_hash = ? WHERE email = 'admin@taratrabaho.com'`,
+      args: [password_hash]
+    });
+
+    res.json({ 
+      success: true, 
+      message: "Admin password reset to: Admin@123",
+      hash: password_hash
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 // ============================================================================
 // SERVER START
 // ============================================================================
