@@ -9,6 +9,8 @@ const SECRET_KEY = "your-secret-key"; // Use .env for real projects
 const crypto = require("crypto");
 const otpStore = {};
 
+process.env.TZ = 'Asia/Manila';
+
 //SendGrid
 const sgMail = require('@sendgrid/mail');
 require("dotenv").config();
