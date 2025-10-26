@@ -279,7 +279,7 @@ app.post("/api/verify-otp", (req, res) => {
   // ✅ Insert user into database after successful OTP verification
   const stmt = db.prepare(`
     INSERT INTO user (firstname, lastname, birthday, gender, username, email, phone, password_hash, role, verified)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'approved')
   `);
 
   stmt.run(
