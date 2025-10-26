@@ -69,7 +69,7 @@ const OtpPage = () => {
         setMessage("✅ OTP verified successfully! Auto-login in progress...");
         
         // ✅ Auto-login after successful verification
-        const loginRes = await fetch(`${API_BASE}api/auto-login`, {
+        const loginRes = await fetch(`${API_BASE}/api/auto-login`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email }),
