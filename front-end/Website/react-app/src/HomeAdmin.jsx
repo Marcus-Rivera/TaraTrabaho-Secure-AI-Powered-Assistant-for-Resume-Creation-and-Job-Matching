@@ -10,6 +10,7 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useSessionCheck } from "../useSessionCheck";
 import SessionExpiredModal from "../SessionExpiredModal";
 import { API_BASE } from "./config/api";
+import VisibilityIcon from "@mui/icons-material/Visibility";
 
 const SidebarContent = ({ onClose, isMobile }) => {
   const { userData, sessionError } = useSessionCheck();
@@ -141,6 +142,16 @@ const SidebarContent = ({ onClose, isMobile }) => {
             </NavLink>
           ))}
         </nav>
+
+        <div className="mt-auto mb-2">
+          <button
+            onClick={() => navigate("/taratrabaho/dashboard")}
+            className="flex items-center w-full px-4 py-3 text-[#272343] rounded-xl transition-all duration-200 bg-[#FBDA23]/30 hover:bg-[#FBDA23]/50 hover:shadow-md group"
+          >
+            <VisibilityIcon className="w-5 h-5 transition-transform duration-300 group-hover:scale-110" />
+            <span className="mx-3 font-semibold text-sm">View as Job Seeker</span>
+          </button>
+        </div>
 
         {/* Logout */}
         <div className="mt-4">

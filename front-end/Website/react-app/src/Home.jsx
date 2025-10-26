@@ -10,6 +10,7 @@ import { useRef } from "react";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import PersonIcon from "@mui/icons-material/Person";
 import { API_BASE } from "./config/api";
+import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 
 const SidebarContent = ({ onClose, isMobile }) => {
   const location = useLocation();
@@ -378,6 +379,22 @@ const SidebarContent = ({ onClose, isMobile }) => {
             }
           />
         </nav>
+
+        {userData?.role === 'admin' && (
+          <div className="mb-2 p-3 bg-[#FBDA23]/20 rounded-xl">
+            <div className="flex items-center mb-2">
+              <AdminPanelSettingsIcon sx={{ fontSize: '1rem', color: '#272343' }} />
+              <span className="text-xs font-bold text-[#272343] ml-2">Admin Mode</span>
+            </div>
+            <button
+              onClick={() => navigate("/admin/manage-users")}
+              className="flex items-center w-full px-4 py-2.5 text-white bg-gradient-to-r from-[#272343] to-[#3a3658] rounded-lg transition-all duration-200 hover:shadow-lg hover:scale-[1.02] group"
+            >
+              <AdminPanelSettingsIcon className="w-5 h-5 transition-transform duration-300 group-hover:scale-110" />
+              <span className="mx-3 font-semibold text-sm">Back to Admin Panel</span>
+            </button>
+          </div>
+        )}
 
 
         {/* Logout */}
