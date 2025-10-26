@@ -184,7 +184,8 @@ const ManageUser = () => {
   };
 
   const getStatusColor = (status) => {
-    switch (status) {
+    const normalizedStatus = String(status || '').toLowerCase().trim();
+    switch (normalizedStatus) {
       case "approved":
         return "success";
       case "suspended":
