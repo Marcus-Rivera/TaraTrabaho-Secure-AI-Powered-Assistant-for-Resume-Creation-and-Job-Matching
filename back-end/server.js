@@ -1,11 +1,11 @@
 // Import required modules
 const express = require("express");
-const sqlite3 = require("sqlite3").verbose();
+const { createClient } = require("@libsql/client");
 const cors = require("cors");
 const bodyParser = require("body-parser");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const SECRET_KEY = "your-secret-key"; // Use .env for real projects
+const SECRET_KEY = process.env.JWT_SECRET || "your-secret-key";
 const crypto = require("crypto");
 const otpStore = {};
 
@@ -23,6 +23,7 @@ const resetTokenStore = {};
 // Test for Resume Saver
 const multer = require('multer');
 const path = require('path');
+const rateLimit = require('express-rate-limit');
 
 // Initialize Express application
 const app = express();
@@ -36,39 +37,41 @@ app.use(express.json());
 app.use(bodyParser.json());
 app.set("trust proxy", 1);
 
-// Connect to SQLite database
-const db = new sqlite3.Database("tratrabaho.db");
-
-process.on('SIGINT', () => {
-  db.close((err) => {
-    if (err) {
-      console.error(err.message);
-    }
-    console.log('Database connection closed.');
-    process.exit(0);
-  });
+// ============================================================================
+// TURSO DATABASE CONNECTION
+// ============================================================================
+const db = createClient({
+  url: process.env.TURSO_DATABASE_URL,
+  authToken: process.env.TURSO_AUTH_TOKEN,
 });
+
+// Test connection
+(async () => {
+  try {
+    await db.execute("SELECT 1");
+    console.log("✅ Connected to Turso database");
+  } catch (err) {
+    console.error("❌ Failed to connect to Turso:", err);
+    process.exit(1);
+  }
+})();
 
 const tempUserStore = {};
 
 // ============================================================================
 // GEMINI API ENDPOINT
 // ============================================================================
-// Route to handle Gemini API requests
 app.post("/api/gemini", async (req, res) => {
   try {
-    // Check if API key is set
     if (!GEMINI_API_KEY) {
       return res.status(500).json({ error: "GEMINI_API_KEY is not defined" });
     }
 
-    // Get prompt from frontend
     const { prompt } = req.body;
     if (!prompt) {
       return res.status(400).json({ error: "Prompt is required" });
     }
 
-    // Call Gemini API
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
       {
@@ -81,14 +84,9 @@ app.post("/api/gemini", async (req, res) => {
     );
 
     const data = await response.json();
+    const output = data?.candidates?.[0]?.content?.parts?.[0]?.text || "No response from Gemini";
 
-    // Safely extract Gemini text output
-    const output =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text || "No response from Gemini";
-
-    // Send cleaned result to frontend
     res.json({ output });
-
   } catch (err) {
     console.error("Gemini API Error:", err);
     res.status(500).json({ error: "Something went wrong with Gemini API" });
@@ -96,34 +94,29 @@ app.post("/api/gemini", async (req, res) => {
 });
 
 // ============================================================================
-// LOGIN ENDPOINT - Fixed to support both Google and Email/Password
+// LOGIN ENDPOINT
 // ============================================================================
-
-const rateLimit = require('express-rate-limit');
-
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 attempts
+  windowMs: 15 * 60 * 1000,
+  max: 5,
   message: 'Too many login attempts, try again later'
 });
 
 app.post("/api/login", loginLimiter, async (req, res) => {
   const { email, password } = req.body;
 
-  // Validate input fields
   if (!email || !password) {
     return res.status(400).json({ message: "Email and password are required" });
   }
 
-  // Retrieve user record based on email
-  const query = `SELECT * FROM user WHERE LOWER(email) = LOWER(?)`;
-  db.get(query, [email], async (err, user) => {
-    if (err) {
-      console.error("DB Error:", err);
-      return res.status(500).json({ message: "Database error" });
-    }
+  try {
+    const result = await db.execute({
+      sql: "SELECT * FROM user WHERE LOWER(email) = LOWER(?)",
+      args: [email]
+    });
 
-    // ✅ FIX: Check if user exists first
+    const user = result.rows[0];
+
     if (!user) {
       return res.status(401).json({ 
         status: "error", 
@@ -131,7 +124,6 @@ app.post("/api/login", loginLimiter, async (req, res) => {
       });
     }
 
-    // ✅ Check if this is a Google-only account
     if (!user.password_hash && user.google_id) {
       return res.status(401).json({ 
         status: "error", 
@@ -139,7 +131,6 @@ app.post("/api/login", loginLimiter, async (req, res) => {
       });
     }
 
-    // ✅ Check if account has no password (shouldn't happen, but safety check)
     if (!user.password_hash) {
       return res.status(401).json({ 
         status: "error", 
@@ -147,7 +138,6 @@ app.post("/api/login", loginLimiter, async (req, res) => {
       });
     }
 
-    // CHECK IF USER ACCOUNT IS SUSPENDED
     if (user.status === 'suspended') {
       return res.status(403).json({ 
         status: "suspended", 
@@ -155,10 +145,8 @@ app.post("/api/login", loginLimiter, async (req, res) => {
       });
     }
 
-    // Compare provided password with the hashed password in the database
     const match = await bcrypt.compare(password, user.password_hash);
 
-    // Handle invalid password case
     if (!match) {
       return res.status(401).json({ 
         status: "error", 
@@ -166,7 +154,6 @@ app.post("/api/login", loginLimiter, async (req, res) => {
       });
     }
 
-    // Create JWT (expires in 1 hour) 
     const token = jwt.sign(
       { id: user.user_id, email: user.email, role: user.role }, 
       SECRET_KEY, 
@@ -174,15 +161,11 @@ app.post("/api/login", loginLimiter, async (req, res) => {
     );
 
     // Track login activity
-    const activityQuery = `
-      INSERT INTO user_activity (user_id, activity_type, activity_date)
-      VALUES (?, 'login', date('now'))
-    `;
-    db.run(activityQuery, [user.user_id], (err) => {
-      if (err) console.error('Error tracking login:', err);
+    await db.execute({
+      sql: "INSERT INTO user_activity (user_id, activity_type, activity_date) VALUES (?, 'login', date('now'))",
+      args: [user.user_id]
     });
 
-    // Successful authentication → send user info (but omit sensitive data)
     return res.json({
       success: true,
       message: "Login successful",
@@ -196,32 +179,34 @@ app.post("/api/login", loginLimiter, async (req, res) => {
         status: user.status,
       },
     });
-  });
+  } catch (err) {
+    console.error("Login error:", err);
+    return res.status(500).json({ message: "Database error" });
+  }
 });
 
 // ============================================================================
-// OTP 
+// AUTO LOGIN
 // ============================================================================
-app.post("/api/auto-login", (req, res) => {
+app.post("/api/auto-login", async (req, res) => {
   const { email } = req.body;
 
   if (!email) {
     return res.status(400).json({ success: false, message: "Email is required" });
   }
 
-  // Retrieve user from database
-  const query = `SELECT * FROM user WHERE LOWER(email) = LOWER(?) AND verified = 1`;
-  db.get(query, [email], (err, user) => {
-    if (err) {
-      console.error("DB Error:", err);
-      return res.status(500).json({ success: false, message: "Database error" });
-    }
+  try {
+    const result = await db.execute({
+      sql: "SELECT * FROM user WHERE LOWER(email) = LOWER(?) AND verified = 1",
+      args: [email]
+    });
+
+    const user = result.rows[0];
 
     if (!user) {
       return res.status(401).json({ success: false, message: "User not found or not verified" });
     }
 
-    // Create JWT token
     const token = jwt.sign(
       { id: user.user_id, email: user.email, role: user.role }, 
       SECRET_KEY, 
@@ -240,11 +225,16 @@ app.post("/api/auto-login", (req, res) => {
         role: user.role,
       },
     });
-  });
+  } catch (err) {
+    console.error("Auto-login error:", err);
+    return res.status(500).json({ success: false, message: "Database error" });
+  }
 });
 
-// Verify OTP
-app.post("/api/verify-otp", (req, res) => {
+// ============================================================================
+// VERIFY OTP
+// ============================================================================
+app.post("/api/verify-otp", async (req, res) => {
   const { email, otp } = req.body;
 
   if (!email || !otp) {
@@ -253,75 +243,68 @@ app.post("/api/verify-otp", (req, res) => {
 
   const normalizedEmail = email.toLowerCase().trim();
 
-  // Check OTP
   const otpRecord = otpStore[normalizedEmail];
-  if (!otpRecord) return res.status(400).json({ success: false, message: "No OTP sent for this email" });
+  if (!otpRecord) {
+    return res.status(400).json({ success: false, message: "No OTP sent for this email" });
+  }
   
   if (Date.now() > otpRecord.expires) {
-    delete otpStore[normalizedEmail];  // ✅ FIXED
+    delete otpStore[normalizedEmail];
     return res.status(400).json({ success: false, message: "OTP expired" });
   }
   
-  if (otpRecord.otp !== otp) return res.status(400).json({ success: false, message: "Invalid OTP" });
+  if (otpRecord.otp !== otp) {
+    return res.status(400).json({ success: false, message: "Invalid OTP" });
+  }
 
-  // Check if temporary user data exists
   const tempUser = tempUserStore[normalizedEmail];
   if (!tempUser) {
     return res.status(400).json({ success: false, message: "Signup session expired. Please sign up again." });
   }
 
-  // Check if temporary data expired
   if (Date.now() > tempUser.expires) {
-    delete tempUserStore[normalizedEmail];  // ✅ FIXED
+    delete tempUserStore[normalizedEmail];
     return res.status(400).json({ success: false, message: "Signup session expired. Please sign up again." });
   }
 
-  // ✅ Insert user into database after successful OTP verification
-  const stmt = db.prepare(`
-    INSERT INTO user (firstname, lastname, birthday, gender, username, email, phone, password_hash, role, verified, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'approved')
-  `);
+  try {
+    const result = await db.execute({
+      sql: `INSERT INTO user (firstname, lastname, birthday, gender, username, email, phone, password_hash, role, verified, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'approved')`,
+      args: [
+        tempUser.firstname,
+        tempUser.lastname,
+        tempUser.birthday,
+        tempUser.gender,
+        tempUser.username,
+        tempUser.email,
+        tempUser.phone,
+        tempUser.password_hash,
+        tempUser.role
+      ]
+    });
 
-  stmt.run(
-    tempUser.firstname,
-    tempUser.lastname,
-    tempUser.birthday,
-    tempUser.gender,
-    tempUser.username,
-    tempUser.email,
-    tempUser.phone,
-    tempUser.password_hash,
-    tempUser.role,
-    function (err) {
-      if (err) {
-        console.error("DB Insert Error:", err);
-        
-        // Handle unique constraint violation (in case of race condition)
-        if (err.message.includes("UNIQUE constraint")) {
-          return res.status(400).json({ success: false, message: "Email already exists" });
-        }
-        
-        return res.status(500).json({ success: false, message: "Database error during registration" });
-      }
+    delete otpStore[normalizedEmail];
+    delete tempUserStore[normalizedEmail];
 
-      // ✅ Clean up temporary data (ONLY ONCE with normalizedEmail)
-      delete otpStore[normalizedEmail];
-      delete tempUserStore[normalizedEmail];
-
-      res.json({ 
-        success: true, 
-        message: "Account verified and created successfully!",
-        userId: this.lastID 
-      });
+    res.json({ 
+      success: true, 
+      message: "Account verified and created successfully!",
+      userId: result.lastInsertRowid
+    });
+  } catch (err) {
+    console.error("OTP verification error:", err);
+    
+    if (err.message.includes("UNIQUE constraint")) {
+      return res.status(400).json({ success: false, message: "Email already exists" });
     }
-  );
-
-  stmt.finalize();
+    
+    return res.status(500).json({ success: false, message: "Database error during registration" });
+  }
 });
 
-
 // ============================================================================
-// SEND OTP (for resending)
+// SEND OTP
 // ============================================================================
 app.post("/api/send-otp", async (req, res) => {
   const { email } = req.body;
@@ -331,8 +314,6 @@ app.post("/api/send-otp", async (req, res) => {
   }
 
   const normalizedEmail = email.toLowerCase().trim();
-
-  // Check if temporary user data exists (meaning they're in signup flow)
   const tempUser = tempUserStore[normalizedEmail];
   
   if (!tempUser) {
@@ -342,11 +323,9 @@ app.post("/api/send-otp", async (req, res) => {
     });
   }
 
-  // Generate new 4-digit OTP
   const otp = crypto.randomInt(1000, 9999).toString();
   otpStore[normalizedEmail] = { otp, expires: Date.now() + 5 * 60 * 1000 };
 
-  // Send OTP via email
   try {
     const msg = {
       to: normalizedEmail,
@@ -360,7 +339,6 @@ app.post("/api/send-otp", async (req, res) => {
           
           <div style="background: white; padding: 30px; border: 1px solid #ddd;">
             <p>Welcome to <strong>TaraTrabaho</strong>!</p>
-            
             <p>Your new verification code is:</p>
             
             <div style="text-align: center; margin: 30px 0;">
@@ -369,13 +347,8 @@ app.post("/api/send-otp", async (req, res) => {
               </span>
             </div>
             
-            <p style="color: #d32f2f; font-weight: bold;">
-              ⚠️ This code will expire in 5 minutes.
-            </p>
-            
-            <p style="color: #666; font-size: 14px; margin-top: 20px;">
-              If you didn't request this code, please ignore this email.
-            </p>
+            <p style="color: #d32f2f; font-weight: bold;">⚠️ This code will expire in 5 minutes.</p>
+            <p style="color: #666; font-size: 14px; margin-top: 20px;">If you didn't request this code, please ignore this email.</p>
           </div>
         </div>
       `
@@ -388,7 +361,6 @@ app.post("/api/send-otp", async (req, res) => {
       success: true,
       message: "OTP resent successfully! Check your email.",
     });
-
   } catch (mailErr) {
     console.error("❌ Error resending OTP email:", mailErr.response?.body || mailErr);
     res.status(500).json({
@@ -399,7 +371,7 @@ app.post("/api/send-otp", async (req, res) => {
 });
 
 // ============================================================================
-// VERIFY TOKEN ENDPOINT
+// VERIFY TOKEN
 // ============================================================================
 app.post("/api/verifyToken", (req, res) => {
   const authHeader = req.headers["authorization"];
@@ -415,7 +387,6 @@ app.post("/api/verifyToken", (req, res) => {
 // ============================================================================
 // SIGNUP ENDPOINT
 // ============================================================================
-// Creates a new user account and stores hashed password securely.
 app.post("/api/signup", async (req, res) => {
   const { firstname, lastname, birthday, gender, username, email, phone, password } = req.body;
 
@@ -425,16 +396,15 @@ app.post("/api/signup", async (req, res) => {
     return res.status(400).json({ status: "error", message: "Email and password are required" });
   }
 
-  // Check if email already exists in database (permanent users)
-  const checkQuery = `SELECT * FROM user WHERE LOWER(email) = LOWER(?)`;
-  db.get(checkQuery, [email], async (err, existingUser) => {
-    if (err) {
-      console.error("DB Error:", err);
-      return res.status(500).json({ status: "error", message: "Database error" });
-    }
+  try {
+    const result = await db.execute({
+      sql: "SELECT * FROM user WHERE LOWER(email) = LOWER(?)",
+      args: [email]
+    });
+
+    const existingUser = result.rows[0];
 
     if (existingUser) {
-      // Check if it's a Google-only account
       if (existingUser.google_id && (!existingUser.password_hash || existingUser.password_hash === '')) {
         return res.status(400).json({ 
           status: "error", 
@@ -445,448 +415,333 @@ app.post("/api/signup", async (req, res) => {
       return res.status(400).json({ status: "error", message: "Email already exists" });
     }
 
+    const password_hash = await bcrypt.hash(password, 10);
+    const role = "job_seeker";
 
-    try {
-      const password_hash = await bcrypt.hash(password, 10);
-      const role = "job_seeker";
+    tempUserStore[normalizedEmail] = {
+      firstname,
+      lastname,
+      birthday,
+      gender,
+      username,
+      email: normalizedEmail,
+      phone,
+      password_hash,
+      role,
+      expires: Date.now() + 10 * 60 * 1000
+    };
 
-      const normalizedEmail = email.toLowerCase().trim();
-      // Store user data temporarily (expires in 10 minutes)
-      tempUserStore[normalizedEmail] = {
-        firstname,
-        lastname,
-        birthday,
-        gender,
-        username,
-        email: normalizedEmail,
-        phone,
-        password_hash,
-        role,
-        expires: Date.now() + 10 * 60 * 1000 // 10 minutes
-      };
+    const otp = crypto.randomInt(1000, 9999).toString();
+    otpStore[normalizedEmail] = { otp, expires: Date.now() + 5 * 60 * 1000 };
 
-      // Generate 4-digit OTP
-      const otp = crypto.randomInt(1000, 9999).toString();
-      otpStore[normalizedEmail] = { otp, expires: Date.now() + 5 * 60 * 1000 };
-
-      // Send OTP via email
-      try {
-        const msg = {
-          to: normalizedEmail,
-          from: process.env.SENDGRID_FROM_EMAIL, // Must be verified in SendGrid
-          subject: 'Tratrabaho Email Verification OTP',
-          html: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-              <div style="background: linear-gradient(135deg, #BAE8E8, #FBDA23); padding: 20px; border-radius: 10px 10px 0 0;">
-                <h2 style="color: #272343; margin: 0;">✉️ Email Verification</h2>
-              </div>
-              
-              <div style="background: white; padding: 30px; border: 1px solid #ddd;">
-                <p>Welcome to <strong>TaraTrabaho</strong>!</p>
-                
-                <p>Your verification code is:</p>
-                
-                <div style="text-align: center; margin: 30px 0;">
-                  <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #2C275C; background: #f0f9ff; padding: 15px 30px; border-radius: 8px; display: inline-block;">
-                    ${otp}
-                  </span>
-                </div>
-                
-                <p style="color: #d32f2f; font-weight: bold;">
-                  ⚠️ This code will expire in 5 minutes.
-                </p>
-                
-                <p style="color: #666; font-size: 14px; margin-top: 20px;">
-                  If you didn't request this code, please ignore this email.
-                </p>
-              </div>
+    const msg = {
+      to: normalizedEmail,
+      from: process.env.SENDGRID_FROM_EMAIL,
+      subject: 'Tratrabaho Email Verification OTP',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: linear-gradient(135deg, #BAE8E8, #FBDA23); padding: 20px; border-radius: 10px 10px 0 0;">
+            <h2 style="color: #272343; margin: 0;">✉️ Email Verification</h2>
+          </div>
+          
+          <div style="background: white; padding: 30px; border: 1px solid #ddd;">
+            <p>Welcome to <strong>TaraTrabaho</strong>!</p>
+            <p>Your verification code is:</p>
+            
+            <div style="text-align: center; margin: 30px 0;">
+              <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #2C275C; background: #f0f9ff; padding: 15px 30px; border-radius: 8px; display: inline-block;">
+                ${otp}
+              </span>
             </div>
-          `
-        };
+            
+            <p style="color: #d32f2f; font-weight: bold;">⚠️ This code will expire in 5 minutes.</p>
+            <p style="color: #666; font-size: 14px; margin-top: 20px;">If you didn't request this code, please ignore this email.</p>
+          </div>
+        </div>
+      `
+    };
 
-        await sgMail.send(msg);
-        console.log('✅ OTP email sent to:', normalizedEmail);
+    await sgMail.send(msg);
+    console.log('✅ OTP email sent to:', normalizedEmail);
 
-        res.json({
-          status: "pending",
-          message: "Please verify your email via OTP to complete registration.",
-          email: normalizedEmail,
-        });
-      } catch (mailErr) {
-        console.error("❌ Error sending OTP email:", mailErr.response?.body || mailErr);
-        // Clean up temporary data if email fails
-        delete tempUserStore[normalizedEmail];
-        delete otpStore[normalizedEmail];
-        res.status(500).json({
-          status: "error",
-          message: "Failed to send OTP email. Please try again.",
-        });
-      }
-    } catch (error) {
-      console.error("Signup error:", error);
-      res.status(500).json({ status: "error", message: "Server error" });
+    res.json({
+      status: "pending",
+      message: "Please verify your email via OTP to complete registration.",
+      email: normalizedEmail,
+    });
+  } catch (error) {
+    console.error("Signup error:", error);
+    
+    if (error.response?.body) {
+      console.error("SendGrid error:", error.response.body);
+      delete tempUserStore[normalizedEmail];
+      delete otpStore[normalizedEmail];
+      return res.status(500).json({
+        status: "error",
+        message: "Failed to send OTP email. Please try again.",
+      });
     }
-  });
+    
+    res.status(500).json({ status: "error", message: "Server error" });
+  }
 });
 
 // ============================================================================
 // FETCH ALL USERS
 // ============================================================================
-app.get("/api/users", (req, res) => {
-  const query = `SELECT user_id, username, email, role, status FROM user`;
-  db.all(query, [], (err, rows) => {
-    if (err) {
-      console.error("Error fetching users:", err);
-      return res.status(500).json({ message: "Database error" });
-    }
-    res.json(rows);
-  });
+app.get("/api/users", async (req, res) => {
+  try {
+    const result = await db.execute("SELECT user_id, username, email, role, status FROM user");
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Error fetching users:", err);
+    return res.status(500).json({ message: "Database error" });
+  }
 });
 
 // ============================================================================
 // UPDATE USER STATUS
 // ============================================================================
-app.put("/api/users/:user_id", (req, res) => {
+app.put("/api/users/:user_id", async (req, res) => {
   const { user_id } = req.params;
   const { status } = req.body;
 
-  const query = `UPDATE user SET status = ? WHERE user_id = ?`;
-  db.run(query, [status, user_id], function (err) {
-    if (err) {
-      console.error("Error updating user:", err);
-      return res.status(500).json({ message: "Database error" });
-    }
+  try {
+    const result = await db.execute({
+      sql: "UPDATE user SET status = ? WHERE user_id = ?",
+      args: [status, user_id]
+    });
 
-    if (this.changes === 0) {
+    if (result.rowsAffected === 0) {
       return res.status(404).json({ message: "User not found" });
     }
 
     res.json({ message: "User status updated successfully" });
-  });
+  } catch (err) {
+    console.error("Error updating user:", err);
+    return res.status(500).json({ message: "Database error" });
+  }
 });
-
 
 // ============================================================================
 // DELETE USER
 // ============================================================================
-app.delete("/api/users/:user_id", (req, res) => {
+app.delete("/api/users/:user_id", async (req, res) => {
   const { user_id } = req.params;
 
-  // Start transaction to delete user and all related data
-  db.serialize(() => {
-    // Delete related data first (foreign key constraints)
-    db.run('DELETE FROM user_activity WHERE user_id = ?', [user_id]);
-    db.run('DELETE FROM resume WHERE user_id = ?', [user_id]);
-    db.run('DELETE FROM chathistory WHERE user_id = ?', [user_id]);
-    db.run('DELETE FROM application WHERE user_id = ?', [user_id]);
-    db.run('DELETE FROM saved_jobs WHERE user_id = ?', [user_id]);
-    db.run('DELETE FROM admin_saved_jobs WHERE user_id = ?', [user_id]);
-    db.run('DELETE FROM skills WHERE user_id = ?', [user_id]);
-    db.run('DELETE FROM profile_picture WHERE user_id = ?', [user_id]);
+  try {
+    // Delete in order (foreign key constraints)
+    await db.execute({ sql: 'DELETE FROM user_activity WHERE user_id = ?', args: [user_id] });
+    await db.execute({ sql: 'DELETE FROM resume WHERE user_id = ?', args: [user_id] });
+    await db.execute({ sql: 'DELETE FROM chathistory WHERE user_id = ?', args: [user_id] });
+    await db.execute({ sql: 'DELETE FROM application WHERE user_id = ?', args: [user_id] });
+    await db.execute({ sql: 'DELETE FROM saved_jobs WHERE user_id = ?', args: [user_id] });
+    await db.execute({ sql: 'DELETE FROM admin_saved_jobs WHERE user_id = ?', args: [user_id] });
+    await db.execute({ sql: 'DELETE FROM skills WHERE user_id = ?', args: [user_id] });
+    await db.execute({ sql: 'DELETE FROM profile_picture WHERE user_id = ?', args: [user_id] });
     
-    // Finally delete the user
-    db.run('DELETE FROM user WHERE user_id = ?', [user_id], function(err) {
-      if (err) {
-        console.error("Error deleting user:", err);
-        return res.status(500).json({ message: "Database error" });
-      }
+    const result = await db.execute({ sql: 'DELETE FROM user WHERE user_id = ?', args: [user_id] });
 
-      if (this.changes === 0) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      res.json({ message: "User and all related data deleted successfully" });
-    });
-  });
-});
-
-// ============================================================================
-// JOB FETCH - Get all jobs
-// ============================================================================
-app.get("/api/jobs", (req, res) => {
-  const query = `
-    SELECT job_id, title, description, location, min_salary, max_salary, 
-           vacantleft, company, company_email, type, posted, tags, remote 
-    FROM job
-  `;
-  
-  db.all(query, [], (err, rows) => {
-    if (err) {
-      console.error("Error fetching jobs:", err);
-      return res.status(500).json({ message: "Database error" });
+    if (result.rowsAffected === 0) {
+      return res.status(404).json({ message: "User not found" });
     }
-    res.json(rows);
-  });
+
+    res.json({ message: "User and all related data deleted successfully" });
+  } catch (err) {
+    console.error("Error deleting user:", err);
+    return res.status(500).json({ message: "Database error" });
+  }
 });
 
 // ============================================================================
-// JOB ADD - Create a new job
+// JOB ENDPOINTS
 // ============================================================================
-app.post("/api/jobs", (req, res) => {
+
+// GET all jobs
+app.get("/api/jobs", async (req, res) => {
+  try {
+    const result = await db.execute(`
+      SELECT job_id, title, description, location, min_salary, max_salary, 
+             vacantleft, company, company_email, type, posted, tags, remote 
+      FROM job
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Error fetching jobs:", err);
+    return res.status(500).json({ message: "Database error" });
+  }
+});
+
+// ADD job
+app.post("/api/jobs", async (req, res) => {
   const { 
-    title, 
-    description, 
-    location, 
-    min_salary, 
-    max_salary, 
-    vacantleft, 
-    company, 
-    company_email,
-    type, 
-    tags, 
-    remote 
+    title, description, location, min_salary, max_salary, vacantleft, 
+    company, company_email, type, tags, remote 
   } = req.body;
 
-  // Validate required fields
-  if (!title || !description || !location || !min_salary || !max_salary || !vacantleft || !company || !company_email || !type || !tags) {
+  if (!title || !description || !location || !min_salary || !max_salary || 
+      !vacantleft || !company || !company_email || !type || !tags) {
     return res.status(400).json({ message: "All fields are required." });
   }
 
-  const posted = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
+  const posted = new Date().toISOString().split('T')[0];
 
-  const query = `
-    INSERT INTO job (title, description, location, min_salary, max_salary, vacantleft, company, company_email, type, posted, tags, remote)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `;
+  try {
+    const result = await db.execute({
+      sql: `INSERT INTO job (title, description, location, min_salary, max_salary, vacantleft, 
+                             company, company_email, type, posted, tags, remote)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [title, description, location, min_salary, max_salary, vacantleft, 
+             company, company_email, type, posted, tags, remote || 0]
+    });
 
-  const params = [
-    title, 
-    description, 
-    location, 
-    min_salary, 
-    max_salary, 
-    vacantleft, 
-    company, 
-    company_email,
-    type, 
-    posted, 
-    tags, 
-    remote || 0
-  ];
-
-  db.run(query, params, function (err) {
-    if (err) {
-      console.error("Error inserting job:", err);
-      return res.status(500).json({ message: "Database error while adding job." });
-    }
-
-    // Return the newly created job
     res.status(201).json({
       message: "Job added successfully.",
-      job_id: this.lastID,
-      title,
-      description,
-      location,
-      min_salary,
-      max_salary,
-      vacantleft,
-      company,
-      company_email,
-      type,
-      posted,
-      tags,
-      remote: remote || 0
+      job_id: result.lastInsertRowid,
+      title, description, location, min_salary, max_salary, vacantleft,
+      company, company_email, type, posted, tags, remote: remote || 0
     });
-  });
+  } catch (err) {
+    console.error("Error inserting job:", err);
+    return res.status(500).json({ message: "Database error while adding job." });
+  }
 });
 
-// ============================================================================
-// JOB UPDATE - Update an existing job
-// ============================================================================
-app.put("/api/jobs/:job_id", (req, res) => {
+// UPDATE job
+app.put("/api/jobs/:job_id", async (req, res) => {
   const { job_id } = req.params;
   const { 
-    title, 
-    description, 
-    location, 
-    min_salary, 
-    max_salary, 
-    vacantleft, 
-    company, 
-    company_email,
-    type, 
-    posted, 
-    tags, 
-    remote 
+    title, description, location, min_salary, max_salary, vacantleft, 
+    company, company_email, type, posted, tags, remote 
   } = req.body;
 
-  // Validate required fields
   if (!title || !description || !location || !company || !type || !tags) {
     return res.status(400).json({ message: "Missing required fields" });
   }
 
-  const query = `
-    UPDATE job 
-    SET title = ?, description = ?, location = ?, min_salary = ?, max_salary = ?, 
-        vacantleft = ?, company = ?, company_email = ?, type = ?, posted = ?, tags = ?, remote = ?
-    WHERE job_id = ?
-  `;
+  try {
+    const result = await db.execute({
+      sql: `UPDATE job 
+            SET title = ?, description = ?, location = ?, min_salary = ?, max_salary = ?, 
+                vacantleft = ?, company = ?, company_email = ?, type = ?, posted = ?, tags = ?, remote = ?
+            WHERE job_id = ?`,
+      args: [title, description, location, min_salary, max_salary, vacantleft, 
+             company, company_email, type, posted, tags, remote || 0, job_id]
+    });
 
-  const params = [
-    title, 
-    description, 
-    location, 
-    min_salary, 
-    max_salary, 
-    vacantleft, 
-    company, 
-    company_email,
-    type, 
-    posted, 
-    tags, 
-    remote || 0, 
-    job_id
-  ];
-
-  db.run(query, params, function (err) {
-    if (err) {
-      console.error("Error updating job:", err);
-      return res.status(500).json({ message: "Database error" });
-    }
-
-    if (this.changes === 0) {
+    if (result.rowsAffected === 0) {
       return res.status(404).json({ message: "Job not found" });
     }
 
     res.json({ message: "Job updated successfully" });
-  });
+  } catch (err) {
+    console.error("Error updating job:", err);
+    return res.status(500).json({ message: "Database error" });
+  }
 });
 
-// ============================================================================
-// JOB DELETE - Delete a job
-// ============================================================================
-app.delete("/api/jobs/:job_id", (req, res) => {
+// DELETE job
+app.delete("/api/jobs/:job_id", async (req, res) => {
   const { job_id } = req.params;
 
-  const query = `DELETE FROM job WHERE job_id = ?`;
+  try {
+    const result = await db.execute({
+      sql: "DELETE FROM job WHERE job_id = ?",
+      args: [job_id]
+    });
 
-  db.run(query, [job_id], function (err) {
-    if (err) {
-      console.error("Error deleting job:", err);
-      return res.status(500).json({ message: "Database error" });
-    }
-
-    if (this.changes === 0) {
+    if (result.rowsAffected === 0) {
       return res.status(404).json({ message: "Job not found" });
     }
 
     res.json({ message: "Job deleted successfully" });
-  });
+  } catch (err) {
+    console.error("Error deleting job:", err);
+    return res.status(500).json({ message: "Database error" });
+  }
 });
 
 // ============================================================================
-// FETCH PROFILE
+// PROFILE ENDPOINTS
 // ============================================================================
-app.get("/api/profile/:email", (req, res) => {
-  const { email } = req.params;
-  const query = `SELECT * FROM user WHERE email = ?`;
 
-  db.get(query, [email], (err, user) => {
-    if (err) {
-      console.error("Error fetching profile:", err);
-      return res.status(500).json({ message: "Database error" });
-    }
+// GET profile
+app.get("/api/profile/:email", async (req, res) => {
+  const { email } = req.params;
+
+  try {
+    const result = await db.execute({
+      sql: "SELECT * FROM user WHERE email = ?",
+      args: [email]
+    });
+
+    const user = result.rows[0];
 
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
     res.json(user);
-  });
+  } catch (err) {
+    console.error("Error fetching profile:", err);
+    return res.status(500).json({ message: "Database error" });
+  }
 });
 
-// ============================================================================
-// UPDATE PROFILE
-// ============================================================================
-app.put("/api/profile/:email", (req, res) => {
+// UPDATE profile
+app.put("/api/profile/:email", async (req, res) => {
   const { email } = req.params;
   const {
-    firstname,
-    lastname,
-    gender,
-    birthday,
-    address,
-    phone,
-    bio,
-    certification,
-    seniorHigh,
-    undergraduate,
-    postgraduate,
+    firstname, lastname, gender, birthday, address, phone, bio,
+    certification, seniorHigh, undergraduate, postgraduate,
   } = req.body;
 
-  const query = `
-    UPDATE user
-    SET 
-      firstname = ?, 
-      lastname = ?,
-      gender = ?, 
-      birthday = ?, 
-      address = ?, 
-      phone = ?, 
-      bio = ?, 
-      certification = ?, 
-      seniorHigh = ?, 
-      undergraduate = ?, 
-      postgraduate = ?
-    WHERE email = ?;
-  `;
+  try {
+    const result = await db.execute({
+      sql: `UPDATE user
+            SET firstname = ?, lastname = ?, gender = ?, birthday = ?, address = ?, 
+                phone = ?, bio = ?, certification = ?, seniorHigh = ?, undergraduate = ?, postgraduate = ?
+            WHERE email = ?`,
+      args: [firstname, lastname, gender, birthday, address, phone, bio,
+             certification, seniorHigh, undergraduate, postgraduate, email]
+    });
 
-  const params = [
-    firstname,
-    lastname,
-    gender,
-    birthday,
-    address,
-    phone,
-    bio,
-    certification,
-    seniorHigh,
-    undergraduate,
-    postgraduate,
-    email,
-  ];
-
-  db.run(query, params, function (err) {
-    if (err) {
-      console.error("Error updating profile:", err);
-      return res.status(500).json({ message: "Database error" });
-    }
-
-    if (this.changes === 0) {
+    if (result.rowsAffected === 0) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    db.get('SELECT user_id FROM user WHERE email = ?', [email], (err, user) => {
-      if (!err && user) {
-        const activityQuery = `
-          INSERT INTO user_activity (user_id, activity_type, activity_date)
-          VALUES (?, 'profile_updated', date('now'))
-        `;
-        db.run(activityQuery, [user.user_id], (err) => {
-          if (err) console.error('Error tracking profile update:', err);
-        });
-      }
+    // Track activity
+    const userResult = await db.execute({
+      sql: 'SELECT user_id FROM user WHERE email = ?',
+      args: [email]
     });
 
+    if (userResult.rows[0]) {
+      await db.execute({
+        sql: "INSERT INTO user_activity (user_id, activity_type, activity_date) VALUES (?, 'profile_updated', date('now'))",
+        args: [userResult.rows[0].user_id]
+      });
+    }
+
     res.json({ message: "Profile updated successfully" });
-  });
+  } catch (err) {
+    console.error("Error updating profile:", err);
+    return res.status(500).json({ message: "Database error" });
+  }
 });
 
 // ============================================================================
-// RESUME ENDPOINTS - Using SQLite
+// RESUME ENDPOINTS
 // ============================================================================
 
 const storage = multer.memoryStorage();
 const upload = multer({
   storage: storage,
-  limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB limit
-  },
+  limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowedTypes = /pdf/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
     const mimetype = allowedTypes.test(file.mimetype);
-
     if (mimetype && extname) {
       return cb(null, true);
     } else {
@@ -895,47 +750,36 @@ const upload = multer({
   },
 });
 
-// Save resume to database
+// Save resume
 app.post('/api/resume/save', upload.single('resume'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    const { userId, resumeData } = req.body;
+    const { userId } = req.body;
     const filename = req.file.originalname;
     const fileData = req.file.buffer;
     const createdAt = new Date().toISOString();
 
-    // Insert resume into SQLite database
-    const query = `
-      INSERT INTO resume (user_id, filename, file_data, created_at) 
-      VALUES (?, ?, ?, ?)
-    `;
+    const result = await db.execute({
+      sql: `INSERT INTO resume (user_id, filename, file_data, created_at) VALUES (?, ?, ?, ?)`,
+      args: [userId || null, filename, fileData, createdAt]
+    });
 
-    db.run(query, [userId || null, filename, fileData, createdAt], function(err) {
-      if (err) {
-        console.error('Database error:', err);
-        return res.status(500).json({ error: 'Failed to save resume to database' });
-      }
-
-      // Track resume creation activity
-      if (userId) {
-        const activityQuery = `
-          INSERT INTO user_activity (user_id, activity_type, activity_date)
-          VALUES (?, 'resume_created', date('now'))
-        `;
-        db.run(activityQuery, [userId], (err) => {
-          if (err) console.error('Error tracking resume creation:', err);
-        });
-      }
-
-      res.json({
-        success: true,
-        message: 'Resume saved successfully',
-        resumeId: this.lastID,
-        filename: filename,
+    // Track activity
+    if (userId) {
+      await db.execute({
+        sql: "INSERT INTO user_activity (user_id, activity_type, activity_date) VALUES (?, 'resume_created', date('now'))",
+        args: [userId]
       });
+    }
+
+    res.json({
+      success: true,
+      message: 'Resume saved successfully',
+      resumeId: result.lastInsertRowid,
+      filename: filename,
     });
   } catch (error) {
     console.error('Error saving resume:', error);
@@ -944,37 +788,33 @@ app.post('/api/resume/save', upload.single('resume'), async (req, res) => {
 });
 
 // Get user's resumes
-app.get('/api/resume/user/:userId', (req, res) => {
+app.get('/api/resume/user/:userId', async (req, res) => {
   const { userId } = req.params;
 
-  const query = `
-    SELECT resume_id, user_id, created_at, filename 
-    FROM resume 
-    WHERE user_id = ? 
-    ORDER BY created_at DESC
-  `;
+  try {
+    const result = await db.execute({
+      sql: `SELECT resume_id, user_id, created_at, filename FROM resume WHERE user_id = ? ORDER BY created_at DESC`,
+      args: [userId]
+    });
 
-  db.all(query, [userId], (err, results) => {
-    if (err) {
-      console.error('Database error:', err);
-      return res.status(500).json({ error: 'Failed to fetch resumes' });
-    }
-
-    res.json(results);
-  });
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Database error:', err);
+    return res.status(500).json({ error: 'Failed to fetch resumes' });
+  }
 });
 
-// Download/retrieve resume
-app.get('/api/resume/download/:resumeId', (req, res) => {
+// Download resume
+app.get('/api/resume/download/:resumeId', async (req, res) => {
   const { resumeId } = req.params;
 
-  const query = 'SELECT filename, file_data FROM resume WHERE resume_id = ?';
+  try {
+    const result = await db.execute({
+      sql: 'SELECT filename, file_data FROM resume WHERE resume_id = ?',
+      args: [resumeId]
+    });
 
-  db.get(query, [resumeId], (err, resume) => {
-    if (err) {
-      console.error('Database error:', err);
-      return res.status(500).json({ error: 'Failed to retrieve resume' });
-    }
+    const resume = result.rows[0];
 
     if (!resume) {
       return res.status(404).json({ error: 'Resume not found' });
@@ -982,36 +822,40 @@ app.get('/api/resume/download/:resumeId', (req, res) => {
     
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${resume.filename}"`);
-    res.send(resume.file_data);
-  });
+    res.send(Buffer.from(resume.file_data));
+  } catch (err) {
+    console.error('Database error:', err);
+    return res.status(500).json({ error: 'Failed to retrieve resume' });
+  }
 });
 
 // Delete resume
-app.delete('/api/resume/:resumeId', (req, res) => {
+app.delete('/api/resume/:resumeId', async (req, res) => {
   const { resumeId } = req.params;
 
-  const query = 'DELETE FROM resume WHERE resume_id = ?';
+  try {
+    const result = await db.execute({
+      sql: 'DELETE FROM resume WHERE resume_id = ?',
+      args: [resumeId]
+    });
 
-  db.run(query, [resumeId], function(err) {
-    if (err) {
-      console.error('Database error:', err);
-      return res.status(500).json({ error: 'Failed to delete resume' });
-    }
-
-    if (this.changes === 0) {
+    if (result.rowsAffected === 0) {
       return res.status(404).json({ error: 'Resume not found' });
     }
 
     res.json({ success: true, message: 'Resume deleted successfully' });
-  });
+  } catch (err) {
+    console.error('Database error:', err);
+    return res.status(500).json({ error: 'Failed to delete resume' });
+  }
 });
 
 // ============================================================================
-// CHAT HISTORY ENDPOINTS 
+// CHAT HISTORY ENDPOINTS
 // ============================================================================
 
-// 1. CREATE new chat history
-app.post('/api/chat/save', (req, res) => {
+// CREATE chat history
+app.post('/api/chat/save', async (req, res) => {
   try {
     const { userId, chatData, resumeData } = req.body;
     
@@ -1023,22 +867,15 @@ app.post('/api/chat/save', (req, res) => {
     const resumeDataString = resumeData ? JSON.stringify(resumeData) : null;
     const createdAt = new Date().toISOString();
 
-    const query = `
-      INSERT INTO chathistory (user_id, chat_data, resume_data, timestamp)
-      VALUES (?, ?, ?, ?)
-    `;
+    const result = await db.execute({
+      sql: `INSERT INTO chathistory (user_id, chat_data, resume_data, timestamp) VALUES (?, ?, ?, ?)`,
+      args: [userId, chatDataString, resumeDataString, createdAt]
+    });
 
-    db.run(query, [userId, chatDataString, resumeDataString, createdAt], function(err) {
-      if (err) {
-        console.error('Error saving chat history:', err);
-        return res.status(500).json({ error: 'Failed to save chat history' });
-      }
-
-      res.json({ 
-        success: true, 
-        message: 'Chat history saved successfully',
-        chatId: this.lastID
-      });
+    res.json({ 
+      success: true, 
+      message: 'Chat history saved successfully',
+      chatId: result.lastInsertRowid
     });
   } catch (error) {
     console.error('Error in save chat endpoint:', error);
@@ -1046,8 +883,8 @@ app.post('/api/chat/save', (req, res) => {
   }
 });
 
-// 2. UPDATE existing chat history
-app.put('/api/chat/update/:chatId', (req, res) => {
+// UPDATE chat history
+app.put('/api/chat/update/:chatId', async (req, res) => {
   try {
     const { chatId } = req.params;
     const { chatData, resumeData } = req.body;
@@ -1060,27 +897,19 @@ app.put('/api/chat/update/:chatId', (req, res) => {
     const resumeDataString = resumeData ? JSON.stringify(resumeData) : null;
     const updatedAt = new Date().toISOString();
 
-    const query = `
-      UPDATE chathistory 
-      SET chat_data = ?, resume_data = ?, timestamp = ?
-      WHERE chat_id = ?
-    `;
+    const result = await db.execute({
+      sql: `UPDATE chathistory SET chat_data = ?, resume_data = ?, timestamp = ? WHERE chat_id = ?`,
+      args: [chatDataString, resumeDataString, updatedAt, chatId]
+    });
 
-    db.run(query, [chatDataString, resumeDataString, updatedAt, chatId], function(err) {
-      if (err) {
-        console.error('Error updating chat history:', err);
-        return res.status(500).json({ error: 'Failed to update chat history' });
-      }
+    if (result.rowsAffected === 0) {
+      return res.status(404).json({ error: 'Chat not found' });
+    }
 
-      if (this.changes === 0) {
-        return res.status(404).json({ error: 'Chat not found' });
-      }
-
-      res.json({ 
-        success: true, 
-        message: 'Chat history updated successfully',
-        chatId: parseInt(chatId)
-      });
+    res.json({ 
+      success: true, 
+      message: 'Chat history updated successfully',
+      chatId: parseInt(chatId)
     });
   } catch (error) {
     console.error('Error in update chat endpoint:', error);
@@ -1088,74 +917,53 @@ app.put('/api/chat/update/:chatId', (req, res) => {
   }
 });
 
-// 3. GET user's chat history (THIS WAS MISSING!)
-// In server.js
-app.get('/api/chat/history/:userId', (req, res) => {
+// GET chat history
+app.get('/api/chat/history/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
 
-    const query = `
-      SELECT chat_id, user_id, chat_data, resume_data, timestamp
-      FROM chathistory 
-      WHERE user_id = ? 
-      ORDER BY timestamp DESC 
-      LIMIT 50  -- Optional: limit to 50 most recent chats for performance
-    `;
-
-    db.all(query, [userId], (err, results) => {
-      if (err) {
-        console.error('Error fetching chat history:', err);
-        return res.status(500).json({ error: 'Failed to fetch chat history' });
-      }
-
-      // Parse JSON strings back to objects
-      const parsedResults = results.map(row => ({
-        ...row,
-        chat_data: JSON.parse(row.chat_data),
-        resume_data: row.resume_data ? JSON.parse(row.resume_data) : null
-      }));
-
-      //console.log(`✅ Fetched ${parsedResults.length} chats for user ${userId}`);
-      // if (parsedResults.length > 0) {
-      //   console.log('📅 Most recent chat:', parsedResults[0].chat_id, 'at', parsedResults[0].timestamp);
-      // }
-
-      res.json({ success: true, data: parsedResults });
+    const result = await db.execute({
+      sql: `SELECT chat_id, user_id, chat_data, resume_data, timestamp
+            FROM chathistory WHERE user_id = ? ORDER BY timestamp DESC LIMIT 50`,
+      args: [userId]
     });
+
+    const parsedResults = result.rows.map(row => ({
+      ...row,
+      chat_data: JSON.parse(row.chat_data),
+      resume_data: row.resume_data ? JSON.parse(row.resume_data) : null
+    }));
+
+    res.json({ success: true, data: parsedResults });
   } catch (error) {
     console.error('Error in get chat history endpoint:', error);
     res.status(500).json({ error: 'Server error while fetching chat history' });
   }
 });
 
-// 4. DELETE chat history
-app.delete('/api/chat/:chatId', (req, res) => {
+// DELETE chat history
+app.delete('/api/chat/:chatId', async (req, res) => {
   try {
     const { chatId } = req.params;
 
-    const query = 'DELETE FROM chathistory WHERE chat_id = ?';
-
-    db.run(query, [chatId], function(err) {
-      if (err) {
-        console.error('Error deleting chat:', err);
-        return res.status(500).json({ error: 'Failed to delete chat history' });
-      }
-
-      if (this.changes === 0) {
-        return res.status(404).json({ error: 'Chat not found' });
-      }
-
-      res.json({ success: true, message: 'Chat history deleted successfully' });
+    const result = await db.execute({
+      sql: 'DELETE FROM chathistory WHERE chat_id = ?',
+      args: [chatId]
     });
+
+    if (result.rowsAffected === 0) {
+      return res.status(404).json({ error: 'Chat not found' });
+    }
+
+    res.json({ success: true, message: 'Chat history deleted successfully' });
   } catch (error) {
     console.error('Error in delete chat endpoint:', error);
     res.status(500).json({ error: 'Server error while deleting chat' });
   }
 });
 
-
 // ============================================================================
-// JOB RECOMMENDATION ENDPOINT - AI-Powered
+// JOB RECOMMENDATION ENDPOINT
 // ============================================================================
 app.post('/api/jobs/recommend', async (req, res) => {
   try {
@@ -1165,206 +973,172 @@ app.post('/api/jobs/recommend', async (req, res) => {
       return res.status(400).json({ error: 'userId is required' });
     }
 
-    // 1. Fetch user's most recent resume
-    const resumeQuery = `
-      SELECT resume_data 
-      FROM chathistory 
-      WHERE user_id = ? AND resume_data IS NOT NULL
-      ORDER BY timestamp DESC 
-      LIMIT 1
-    `;
-    
-    db.get(resumeQuery, [userId], async (err, resumeRow) => {
-      if (err) {
-        console.error('Error fetching resume:', err);
-        return res.status(500).json({ error: 'Failed to fetch resume' });
-      }
-
-      // Return empty if no resume found - SKIP AI processing
-      if (!resumeRow || !resumeRow.resume_data) {
-        console.log('No resume found for user:', userId);
-        return res.json({
-          success: true,
-          recommendations: [],
-          hasResume: false,
-        });
-      }
-
-      // Parse resume data
-      let userProfile = {};
-      try {
-        const resumeData = JSON.parse(resumeRow.resume_data);
-        userProfile = {
-          skills: resumeData.skills || [],
-          experience: resumeData.experience || [],
-          education: resumeData.education || [],
-          objective: resumeData.objective || '',
-          summary: resumeData.summary || '',
-        };
-        console.log('Resume found for user:', userId, '- Starting AI matching...');
-      } catch (e) {
-        console.error('Error parsing resume data:', e);
-        return res.json({
-          success: true,
-          recommendations: [],
-          hasResume: false,
-        });
-      }
-
-      // 2. Fetch all jobs
-      const jobsQuery = `
-        SELECT job_id, title, description, location, min_salary, max_salary, 
-               vacantleft, company, type, posted, tags, remote 
-        FROM job
-      `;
-      
-      db.all(jobsQuery, [], async (err, jobs) => {
-        if (err) {
-          console.error('Error fetching jobs:', err);
-          return res.status(500).json({ error: 'Failed to fetch jobs' });
-        }
-
-        if (jobs.length === 0) {
-          return res.json({ success: true, recommendations: [] });
-        }
-
-        // 3. Use Gemini AI to match jobs with user profile
-        const prompt = `You are an AI job matching expert. Analyze the user's profile and recommend the TOP 5 most suitable jobs from the list below. 
-
-        User Profile:
-        - Skills: ${userProfile.skills.join(', ') || 'Not specified'}
-        - Experience: ${JSON.stringify(userProfile.experience) || 'Not specified'}
-        - Education: ${JSON.stringify(userProfile.education) || 'Not specified'}
-        - Career Objective: ${userProfile.objective || 'Not specified'}
-        - Summary: ${userProfile.summary || 'Not specified'}
-
-        Available Jobs (${jobs.length} total):
-        ${jobs.map((job, idx) => `
-        ${idx + 1}. Job ID: ${job.job_id}
-          Title: ${job.title}
-          Company: ${job.company}
-          Type: ${job.type}
-          Location: ${job.location}
-          Tags: ${job.tags}
-          Description: ${job.description}
-        `).join('\n')}
-
-        IMPORTANT: 
-        - Return ONLY a JSON array of exactly 5 job IDs (numbers only) in order of best match
-        - Format: [job_id1, job_id2, job_id3, job_id4, job_id5]
-        - If fewer than 5 jobs exist, return all available job IDs
-        - Consider skills match, experience level, education requirements, and career goals
-        - Prioritize jobs that align with the user's skills and career objective
-
-        Return ONLY the JSON array, no explanation.`;
-
-        try {
-          // Call Gemini API
-          const geminiResponse = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                contents: [{ parts: [{ text: prompt }] }],
-              }),
-            }
-          );
-
-          const geminiData = await geminiResponse.json();
-          const aiOutput = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
-          
-          console.log('AI Recommendation Output:', aiOutput);
-
-          // Parse AI response
-          let recommendedJobIds = [];
-          try {
-            // Extract JSON array from response (handle markdown code blocks)
-            const jsonMatch = aiOutput.match(/\[[\d,\s]+\]/);
-            if (jsonMatch) {
-              recommendedJobIds = JSON.parse(jsonMatch[0]);
-            } else {
-              recommendedJobIds = JSON.parse(aiOutput);
-            }
-          } catch (parseError) {
-            console.error('Error parsing AI response:', parseError);
-            // Fallback: return first 5 jobs
-            recommendedJobIds = jobs.slice(0, 5).map(j => j.job_id);
-          }
-
-          // 4. Get full job details for recommended IDs
-          const recommendedJobs = recommendedJobIds
-            .map(jobId => jobs.find(j => j.job_id === jobId))
-            .filter(job => job !== undefined)
-            .slice(0, 5); // Ensure max 5 recommendations
-
-
-          // 5. Format response
-          const formattedRecommendations = recommendedJobs.map(job => ({
-            id: job.job_id,
-            title: job.title,
-            company: job.company,
-            location: job.location,
-            type: job.type,
-            salary: `₱${parseInt(job.min_salary).toLocaleString()} - ₱${parseInt(job.max_salary).toLocaleString()}`,
-            posted: job.posted,
-            description: job.description,
-            tags: job.tags ? job.tags.split(',').map(tag => tag.trim()) : [],
-            vacantleft: `${job.vacantleft} Vacancies Left`,
-            remote: job.remote === 1,
-            min_salary: job.min_salary,
-            max_salary: job.max_salary,
-          }));
-
-          if (formattedRecommendations.length > 0) {
-            const activityQuery = `
-              INSERT INTO user_activity (user_id, activity_type, activity_date)
-              VALUES (?, 'recommendation_made', date('now'))
-            `;
-            db.run(activityQuery, [userId], (err) => {
-              if (err) {
-                console.error('Error tracking recommendation:', err);
-              } else {
-                console.log('✅ Tracked AI recommendation for user:', userId);
-              }
-            });
-          }
-
-
-          res.json({
-            success: true,
-            recommendations: formattedRecommendations,
-            totalJobs: jobs.length,
-            hasResume: !!resumeRow,
-          });
-
-        } catch (aiError) {
-          console.error('Error calling Gemini API:', aiError);
-          // Fallback: return first 5 jobs
-          const fallbackJobs = jobs.slice(0, 5).map(job => ({
-            id: job.job_id,
-            title: job.title,
-            company: job.company,
-            location: job.location,
-            type: job.type,
-            salary: `₱${parseInt(job.min_salary).toLocaleString()} - ₱${parseInt(job.max_salary).toLocaleString()}`,
-            posted: job.posted,
-            description: job.description,
-            tags: job.tags ? job.tags.split(',').map(tag => tag.trim()) : [],
-            vacantleft: `${job.vacantleft} Vacancies Left`,
-            remote: job.remote === 1,
-          }));
-          
-
-          res.json({
-            success: true,
-            recommendations: fallbackJobs,
-            totalJobs: jobs.length,
-            hasResume: false,
-          });
-        }
-      });
+    const resumeResult = await db.execute({
+      sql: `SELECT resume_data FROM chathistory 
+            WHERE user_id = ? AND resume_data IS NOT NULL
+            ORDER BY timestamp DESC LIMIT 1`,
+      args: [userId]
     });
+    
+    const resumeRow = resumeResult.rows[0];
+
+    if (!resumeRow || !resumeRow.resume_data) {
+      console.log('No resume found for user:', userId);
+      return res.json({
+        success: true,
+        recommendations: [],
+        hasResume: false,
+      });
+    }
+
+    let userProfile = {};
+    try {
+      const resumeData = JSON.parse(resumeRow.resume_data);
+      userProfile = {
+        skills: resumeData.skills || [],
+        experience: resumeData.experience || [],
+        education: resumeData.education || [],
+        objective: resumeData.objective || '',
+        summary: resumeData.summary || '',
+      };
+      console.log('Resume found for user:', userId, '- Starting AI matching...');
+    } catch (e) {
+      console.error('Error parsing resume data:', e);
+      return res.json({
+        success: true,
+        recommendations: [],
+        hasResume: false,
+      });
+    }
+
+    const jobsResult = await db.execute(`
+      SELECT job_id, title, description, location, min_salary, max_salary, 
+             vacantleft, company, type, posted, tags, remote FROM job
+    `);
+    
+    const jobs = jobsResult.rows;
+
+    if (jobs.length === 0) {
+      return res.json({ success: true, recommendations: [] });
+    }
+
+    const prompt = `You are an AI job matching expert. Analyze the user's profile and recommend the TOP 5 most suitable jobs from the list below. 
+
+    User Profile:
+    - Skills: ${userProfile.skills.join(', ') || 'Not specified'}
+    - Experience: ${JSON.stringify(userProfile.experience) || 'Not specified'}
+    - Education: ${JSON.stringify(userProfile.education) || 'Not specified'}
+    - Career Objective: ${userProfile.objective || 'Not specified'}
+    - Summary: ${userProfile.summary || 'Not specified'}
+
+    Available Jobs (${jobs.length} total):
+    ${jobs.map((job, idx) => `
+    ${idx + 1}. Job ID: ${job.job_id}
+      Title: ${job.title}
+      Company: ${job.company}
+      Type: ${job.type}
+      Location: ${job.location}
+      Tags: ${job.tags}
+      Description: ${job.description}
+    `).join('\n')}
+
+    IMPORTANT: 
+    - Return ONLY a JSON array of exactly 5 job IDs (numbers only) in order of best match
+    - Format: [job_id1, job_id2, job_id3, job_id4, job_id5]
+    - If fewer than 5 jobs exist, return all available job IDs
+    - Consider skills match, experience level, education requirements, and career goals
+    - Prioritize jobs that align with the user's skills and career objective
+
+    Return ONLY the JSON array, no explanation.`;
+
+    try {
+      const geminiResponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+          }),
+        }
+      );
+
+      const geminiData = await geminiResponse.json();
+      const aiOutput = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
+      
+      console.log('AI Recommendation Output:', aiOutput);
+
+      let recommendedJobIds = [];
+      try {
+        const jsonMatch = aiOutput.match(/\[[\d,\s]+\]/);
+        if (jsonMatch) {
+          recommendedJobIds = JSON.parse(jsonMatch[0]);
+        } else {
+          recommendedJobIds = JSON.parse(aiOutput);
+        }
+      } catch (parseError) {
+        console.error('Error parsing AI response:', parseError);
+        recommendedJobIds = jobs.slice(0, 5).map(j => j.job_id);
+      }
+
+      const recommendedJobs = recommendedJobIds
+        .map(jobId => jobs.find(j => j.job_id === jobId))
+        .filter(job => job !== undefined)
+        .slice(0, 5);
+
+      const formattedRecommendations = recommendedJobs.map(job => ({
+        id: job.job_id,
+        title: job.title,
+        company: job.company,
+        location: job.location,
+        type: job.type,
+        salary: `₱${parseInt(job.min_salary).toLocaleString()} - ₱${parseInt(job.max_salary).toLocaleString()}`,
+        posted: job.posted,
+        description: job.description,
+        tags: job.tags ? job.tags.split(',').map(tag => tag.trim()) : [],
+        vacantleft: `${job.vacantleft} Vacancies Left`,
+        remote: job.remote === 1,
+        min_salary: job.min_salary,
+        max_salary: job.max_salary,
+      }));
+
+      if (formattedRecommendations.length > 0) {
+        await db.execute({
+          sql: "INSERT INTO user_activity (user_id, activity_type, activity_date) VALUES (?, 'recommendation_made', date('now'))",
+          args: [userId]
+        });
+      }
+
+      res.json({
+        success: true,
+        recommendations: formattedRecommendations,
+        totalJobs: jobs.length,
+        hasResume: !!resumeRow,
+      });
+
+    } catch (aiError) {
+      console.error('Error calling Gemini API:', aiError);
+      const fallbackJobs = jobs.slice(0, 5).map(job => ({
+        id: job.job_id,
+        title: job.title,
+        company: job.company,
+        location: job.location,
+        type: job.type,
+        salary: `₱${parseInt(job.min_salary).toLocaleString()} - ₱${parseInt(job.max_salary).toLocaleString()}`,
+        posted: job.posted,
+        description: job.description,
+        tags: job.tags ? job.tags.split(',').map(tag => tag.trim()) : [],
+        vacantleft: `${job.vacantleft} Vacancies Left`,
+        remote: job.remote === 1,
+      }));
+
+      res.json({
+        success: true,
+        recommendations: fallbackJobs,
+        totalJobs: jobs.length,
+        hasResume: false,
+      });
+    }
   } catch (error) {
     console.error('Error in job recommendation endpoint:', error);
     res.status(500).json({ error: 'Server error while generating recommendations' });
@@ -1374,37 +1148,27 @@ app.post('/api/jobs/recommend', async (req, res) => {
 // ============================================================================
 // GET APPLICATION STATS
 // ============================================================================
-app.get('/api/stats/:userId', (req, res) => {
+app.get('/api/stats/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
 
-    // Get application count
-    const applicationQuery = 'SELECT COUNT(*) as count FROM application WHERE user_id = ?';
-    
-    // Get resume count from resume table ONLY
-    const resumeQuery = 'SELECT COUNT(*) as count FROM resume WHERE user_id = ?';
+    const appResult = await db.execute({
+      sql: 'SELECT COUNT(*) as count FROM application WHERE user_id = ?',
+      args: [userId]
+    });
 
-    db.get(applicationQuery, [userId], (err, appResult) => {
-      if (err) {
-        console.error('Error fetching application count:', err);
-        return res.status(500).json({ error: 'Failed to fetch stats' });
+    const resumeResult = await db.execute({
+      sql: 'SELECT COUNT(*) as count FROM resume WHERE user_id = ?',
+      args: [userId]
+    });
+
+    res.json({
+      success: true,
+      stats: {
+        applications: appResult.rows[0]?.count || 0,
+        resumes: resumeResult.rows[0]?.count || 0,
+        matches: 0,
       }
-
-      db.get(resumeQuery, [userId], (err, resumeResult) => {
-        if (err) {
-          console.error('Error fetching resume count:', err);
-          return res.status(500).json({ error: 'Failed to fetch stats' });
-        }
-
-        res.json({
-          success: true,
-          stats: {
-            applications: appResult?.count || 0,
-            resumes: resumeResult?.count || 0,
-            matches: 0, // Will be calculated from recommendations
-          }
-        });
-      });
     });
   } catch (error) {
     console.error('Error fetching stats:', error);
@@ -1413,19 +1177,12 @@ app.get('/api/stats/:userId', (req, res) => {
 });
 
 // ============================================================================
-// JOB APPLICATION - EMAIL TO COMPANY
-// ============================================================================
-// Add this to your server.js file
-// Make sure to install nodemailer: npm install nodemailer
-
-// ============================================================================
-// JOB APPLICATION ENDPOINT 
+// JOB APPLICATION ENDPOINT
 // ============================================================================
 app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
   try {
     const { userId, jobId, fullName, email, phone, coverLetter, resumeSource, resumeId } = req.body;
     
-    // Validate required fields
     if (!userId || !jobId || !fullName || !email || !phone) {
       return res.status(400).json({ 
         success: false, 
@@ -1433,14 +1190,12 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
       });
     }
 
-    // Get job details INCLUDING company email
-    const jobQuery = 'SELECT * FROM job WHERE job_id = ?';
-    const job = await new Promise((resolve, reject) => {
-      db.get(jobQuery, [jobId], (err, row) => {
-        if (err) reject(err);
-        else resolve(row);
-      });
+    const jobResult = await db.execute({
+      sql: 'SELECT * FROM job WHERE job_id = ?',
+      args: [jobId]
     });
+
+    const job = jobResult.rows[0];
 
     if (!job) {
       return res.status(404).json({ 
@@ -1449,7 +1204,6 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
       });
     }
 
-    // Check if company email exists
     if (!job.company_email) {
       return res.status(400).json({ 
         success: false, 
@@ -1459,19 +1213,16 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
 
     let resumeData, resumeFilename;
 
-    // Handle resume based on source
     if (resumeSource === 'upload' && req.file) {
       resumeData = req.file.buffer;
       resumeFilename = req.file.originalname;
     } else if (resumeSource === 'saved' && resumeId) {
-      const resumeQuery = 'SELECT filename, file_data FROM resume WHERE resume_id = ?';
-      
-      const savedResume = await new Promise((resolve, reject) => {
-        db.get(resumeQuery, [resumeId], (err, row) => {
-          if (err) reject(err);
-          else resolve(row);
-        });
+      const resumeResult = await db.execute({
+        sql: 'SELECT filename, file_data FROM resume WHERE resume_id = ?',
+        args: [resumeId]
       });
+
+      const savedResume = resumeResult.rows[0];
 
       if (!savedResume) {
         return res.status(404).json({ 
@@ -1489,38 +1240,26 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
       });
     }
 
-    // Save application to database
-    const query = `
-      INSERT INTO application 
-        (user_id, job_id, full_name, email, phone, cover_letter, resume_filename, resume_data, status, applied_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now'))
-    `;
-
-    const applicationId = await new Promise((resolve, reject) => {
-      db.run(
-        query, 
-        [userId, jobId, fullName, email, phone, coverLetter, resumeFilename, resumeData],
-        function(err) {
-          if (err) reject(err);
-          else resolve(this.lastID);
-        }
-      );
+    const result = await db.execute({
+      sql: `INSERT INTO application 
+            (user_id, job_id, full_name, email, phone, cover_letter, resume_filename, resume_data, status, applied_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now'))`,
+      args: [userId, jobId, fullName, email, phone, coverLetter, resumeFilename, resumeData]
     });
+
+    const applicationId = result.lastInsertRowid;
 
     // Track activity
-    const activityQuery = `
-      INSERT INTO user_activity (user_id, activity_type, activity_date)
-      VALUES (?, 'job_applied', date('now'))
-    `;
-    db.run(activityQuery, [userId], (err) => {
-      if (err) console.error('Error tracking job application:', err);
+    await db.execute({
+      sql: "INSERT INTO user_activity (user_id, activity_type, activity_date) VALUES (?, 'job_applied', date('now'))",
+      args: [userId]
     });
 
-    // 📧 SEND EMAIL TO COMPANY
+    // Send email to company
     const companyMsg = {
       to: job.company_email,
       from: process.env.SENDGRID_FROM_EMAIL,
-      replyTo: email, // Company can reply directly to applicant
+      replyTo: email,
       subject: `New Job Application: ${job.title} - ${fullName}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -1543,15 +1282,13 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
               </p>
             ` : ''}
             
-            <p style="margin-top: 20px; color: #666;">
-              📎 Resume is attached to this email.
-            </p>
+            <p style="margin-top: 20px; color: #666;">📎 Resume is attached to this email.</p>
           </div>
         </div>
       `,
       attachments: [
         {
-          content: resumeData.toString('base64'),
+          content: Buffer.from(resumeData).toString('base64'),
           filename: resumeFilename,
           type: 'application/pdf',
           disposition: 'attachment'
@@ -1562,7 +1299,7 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
     await sgMail.send(companyMsg);
     console.log('✅ Application email sent to company:', job.company_email);
 
-    // 📧 SEND CONFIRMATION EMAIL TO APPLICANT
+    // Send confirmation to applicant
     const applicantMsg = {
       to: email,
       from: process.env.SENDGRID_FROM_EMAIL,
@@ -1602,16 +1339,10 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
     await sgMail.send(applicantMsg);
     console.log('✅ Confirmation email sent to applicant:', email);
 
-    // Update job vacancy count
-    await new Promise((resolve, reject) => {
-      db.run(
-        'UPDATE job SET vacantleft = vacantleft - 1 WHERE job_id = ? AND vacantleft > 0', 
-        [jobId],
-        (err) => {
-          if (err) reject(err);
-          else resolve();
-        }
-      );
+    // Update vacancy count
+    await db.execute({
+      sql: 'UPDATE job SET vacantleft = vacantleft - 1 WHERE job_id = ? AND vacantleft > 0',
+      args: [jobId]
     });
 
     res.json({
@@ -1632,52 +1363,42 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
 // ============================================================================
 // GET USER'S APPLICATIONS
 // ============================================================================
-app.get('/api/applications/user/:userId', (req, res) => {
+app.get('/api/applications/user/:userId', async (req, res) => {
   const { userId } = req.params;
   
-  const query = `
-    SELECT 
-      a.application_id,
-      a.full_name,
-      a.email,
-      a.phone,
-      a.cover_letter,
-      a.resume_filename,
-      a.status,
-      a.applied_at,
-      j.title as job_title,
-      j.company,
-      j.location,
-      j.type
-    FROM application a
-    JOIN job j ON a.job_id = j.job_id
-    WHERE a.user_id = ?
-    ORDER BY a.applied_at DESC
-  `;
-  
-  db.all(query, [userId], (err, rows) => {
-    if (err) {
-      console.error('Error fetching applications:', err);
-      return res.status(500).json({ error: 'Failed to fetch applications' });
-    }
+  try {
+    const result = await db.execute({
+      sql: `SELECT 
+              a.application_id, a.full_name, a.email, a.phone, a.cover_letter,
+              a.resume_filename, a.status, a.applied_at,
+              j.title as job_title, j.company, j.location, j.type
+            FROM application a
+            JOIN job j ON a.job_id = j.job_id
+            WHERE a.user_id = ?
+            ORDER BY a.applied_at DESC`,
+      args: [userId]
+    });
     
-    res.json({ success: true, applications: rows });
-  });
+    res.json({ success: true, applications: result.rows });
+  } catch (err) {
+    console.error('Error fetching applications:', err);
+    return res.status(500).json({ error: 'Failed to fetch applications' });
+  }
 });
 
 // ============================================================================
 // DOWNLOAD APPLICATION RESUME
 // ============================================================================
-app.get('/api/applications/resume/:applicationId', (req, res) => {
+app.get('/api/applications/resume/:applicationId', async (req, res) => {
   const { applicationId } = req.params;
   
-  const query = 'SELECT resume_filename, resume_data FROM application WHERE application_id = ?';
-  
-  db.get(query, [applicationId], (err, row) => {
-    if (err) {
-      console.error('Error fetching resume:', err);
-      return res.status(500).json({ error: 'Failed to fetch resume' });
-    }
+  try {
+    const result = await db.execute({
+      sql: 'SELECT resume_filename, resume_data FROM application WHERE application_id = ?',
+      args: [applicationId]
+    });
+    
+    const row = result.rows[0];
     
     if (!row) {
       return res.status(404).json({ error: 'Resume not found' });
@@ -1685,103 +1406,95 @@ app.get('/api/applications/resume/:applicationId', (req, res) => {
     
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${row.resume_filename}"`);
-    res.send(row.resume_data);
-  });
+    res.send(Buffer.from(row.resume_data));
+  } catch (err) {
+    console.error('Error fetching resume:', err);
+    return res.status(500).json({ error: 'Failed to fetch resume' });
+  }
 });
 
 // ============================================================================
 // SAVED JOBS ENDPOINTS
 // ============================================================================
 
-// GET user's saved jobs
-app.get('/api/saved-jobs/:userId', (req, res) => {
+// GET saved jobs
+app.get('/api/saved-jobs/:userId', async (req, res) => {
   const { userId } = req.params;
   
-  const query = `
-    SELECT s.saved_job_id, s.job_id, s.saved_at
-    FROM saved_jobs s
-    WHERE s.user_id = ?
-    ORDER BY s.saved_at DESC
-  `;
-  
-  db.all(query, [userId], (err, rows) => {
-    if (err) {
-      console.error('Error fetching saved jobs:', err);
-      return res.status(500).json({ error: 'Failed to fetch saved jobs' });
-    }
+  try {
+    const result = await db.execute({
+      sql: `SELECT saved_job_id, job_id, saved_at FROM saved_jobs WHERE user_id = ? ORDER BY saved_at DESC`,
+      args: [userId]
+    });
     
-    res.json({ success: true, savedJobs: rows });
-  });
+    res.json({ success: true, savedJobs: result.rows });
+  } catch (err) {
+    console.error('Error fetching saved jobs:', err);
+    return res.status(500).json({ error: 'Failed to fetch saved jobs' });
+  }
 });
 
 // SAVE a job
-app.post('/api/saved-jobs', (req, res) => {
+app.post('/api/saved-jobs', async (req, res) => {
   const { userId, jobId } = req.body;
   
   if (!userId || !jobId) {
     return res.status(400).json({ error: 'userId and jobId are required' });
   }
   
-  const query = `
-    INSERT INTO saved_jobs (user_id, job_id)
-    VALUES (?, ?)
-  `;
-  
-  db.run(query, [userId, jobId], function(err) {
-    if (err) {
-      if (err.message.includes('UNIQUE constraint')) {
-        return res.status(400).json({ error: 'Job already saved' });
-      }
-      console.error('Error saving job:', err);
-      return res.status(500).json({ error: 'Failed to save job' });
-    }
+  try {
+    const result = await db.execute({
+      sql: `INSERT INTO saved_jobs (user_id, job_id) VALUES (?, ?)`,
+      args: [userId, jobId]
+    });
     
     res.json({ 
       success: true, 
       message: 'Job saved successfully',
-      savedJobId: this.lastID
+      savedJobId: result.lastInsertRowid
     });
-  });
+  } catch (err) {
+    if (err.message.includes('UNIQUE constraint')) {
+      return res.status(400).json({ error: 'Job already saved' });
+    }
+    console.error('Error saving job:', err);
+    return res.status(500).json({ error: 'Failed to save job' });
+  }
 });
 
 // UNSAVE a job
-app.delete('/api/saved-jobs/:userId/:jobId', (req, res) => {
+app.delete('/api/saved-jobs/:userId/:jobId', async (req, res) => {
   const { userId, jobId } = req.params;
   
-  const query = 'DELETE FROM saved_jobs WHERE user_id = ? AND job_id = ?';
-  
-  db.run(query, [userId, jobId], function(err) {
-    if (err) {
-      console.error('Error unsaving job:', err);
-      return res.status(500).json({ error: 'Failed to unsave job' });
-    }
+  try {
+    const result = await db.execute({
+      sql: 'DELETE FROM saved_jobs WHERE user_id = ? AND job_id = ?',
+      args: [userId, jobId]
+    });
     
-    if (this.changes === 0) {
+    if (result.rowsAffected === 0) {
       return res.status(404).json({ error: 'Saved job not found' });
     }
     
     res.json({ success: true, message: 'Job unsaved successfully' });
-  });
+  } catch (err) {
+    console.error('Error unsaving job:', err);
+    return res.status(500).json({ error: 'Failed to unsave job' });
+  }
 });
-
-
 
 // ============================================================================
 // PROFILE PICTURE ENDPOINTS
 // ============================================================================
 
-// Configure multer for profile pictures
 const profilePictureStorage = multer.memoryStorage();
 const profilePictureUpload = multer({
   storage: profilePictureStorage,
-  limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB limit
-  },
+  limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowedTypes = /jpeg|jpg|png|gif|webp/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
     const mimetype = allowedTypes.test(file.mimetype);
-
     if (mimetype && extname) {
       return cb(null, true);
     } else {
@@ -1800,42 +1513,26 @@ app.post('/api/profile-picture/upload', profilePictureUpload.single('profilePict
     const { userId } = req.body;
     const imageData = req.file.buffer;
     const mimeType = req.file.mimetype;
+    const uploadedAt = new Date().toISOString();
 
-    // Check if user already has a profile picture
-    const checkQuery = 'SELECT picture_id FROM profile_picture WHERE user_id = ?';
-    
-    db.get(checkQuery, [userId], (err, row) => {
-      if (err) {
-        console.error('Database error:', err);
-        return res.status(500).json({ error: 'Failed to upload profile picture' });
-      }
-
-      if (row) {
-        // Update existing profile picture
-        const updateQuery = 'UPDATE profile_picture SET image_data = ?, mime_type = ?, uploaded_at = ? WHERE user_id = ?';
-        const uploadedAt = new Date().toISOString();
-        
-        db.run(updateQuery, [imageData, mimeType, uploadedAt, userId], function(err) {
-          if (err) {
-            console.error('Database error:', err);
-            return res.status(500).json({ error: 'Failed to update profile picture' });
-          }
-          res.json({ success: true, message: 'Profile picture updated successfully' });
-        });
-      } else {
-        // Insert new profile picture
-        const insertQuery = 'INSERT INTO profile_picture (user_id, image_data, mime_type, uploaded_at) VALUES (?, ?, ?, ?)';
-        const uploadedAt = new Date().toISOString();
-        
-        db.run(insertQuery, [userId, imageData, mimeType, uploadedAt], function(err) {
-          if (err) {
-            console.error('Database error:', err);
-            return res.status(500).json({ error: 'Failed to save profile picture' });
-          }
-          res.json({ success: true, message: 'Profile picture uploaded successfully' });
-        });
-      }
+    const checkResult = await db.execute({
+      sql: 'SELECT picture_id FROM profile_picture WHERE user_id = ?',
+      args: [userId]
     });
+
+    if (checkResult.rows[0]) {
+      await db.execute({
+        sql: 'UPDATE profile_picture SET image_data = ?, mime_type = ?, uploaded_at = ? WHERE user_id = ?',
+        args: [imageData, mimeType, uploadedAt, userId]
+      });
+      res.json({ success: true, message: 'Profile picture updated successfully' });
+    } else {
+      await db.execute({
+        sql: 'INSERT INTO profile_picture (user_id, image_data, mime_type, uploaded_at) VALUES (?, ?, ?, ?)',
+        args: [userId, imageData, mimeType, uploadedAt]
+      });
+      res.json({ success: true, message: 'Profile picture uploaded successfully' });
+    }
   } catch (error) {
     console.error('Error uploading profile picture:', error);
     res.status(500).json({ error: 'Failed to upload profile picture' });
@@ -1843,171 +1540,162 @@ app.post('/api/profile-picture/upload', profilePictureUpload.single('profilePict
 });
 
 // Get profile picture
-app.get('/api/profile-picture/:userId', (req, res) => {
+app.get('/api/profile-picture/:userId', async (req, res) => {
   const { userId } = req.params;
   
-  const query = 'SELECT image_data, mime_type FROM profile_picture WHERE user_id = ?';
-  
-  db.get(query, [userId], (err, row) => {
-    if (err) {
-      console.error('Database error:', err);
-      return res.status(500).json({ error: 'Failed to retrieve profile picture' });
-    }
+  try {
+    const result = await db.execute({
+      sql: 'SELECT image_data, mime_type FROM profile_picture WHERE user_id = ?',
+      args: [userId]
+    });
+    
+    const row = result.rows[0];
     
     if (!row) {
       return res.status(404).json({ error: 'Profile picture not found' });
     }
     
     res.setHeader('Content-Type', row.mime_type);
-    res.send(row.image_data);
-  });
+    res.send(Buffer.from(row.image_data));
+  } catch (err) {
+    console.error('Database error:', err);
+    return res.status(500).json({ error: 'Failed to retrieve profile picture' });
+  }
 });
 
 // Delete profile picture
-app.delete('/api/profile-picture/:userId', (req, res) => {
+app.delete('/api/profile-picture/:userId', async (req, res) => {
   const { userId } = req.params;
   
-  const query = 'DELETE FROM profile_picture WHERE user_id = ?';
-  
-  db.run(query, [userId], function(err) {
-    if (err) {
-      console.error('Database error:', err);
-      return res.status(500).json({ error: 'Failed to delete profile picture' });
-    }
+  try {
+    const result = await db.execute({
+      sql: 'DELETE FROM profile_picture WHERE user_id = ?',
+      args: [userId]
+    });
     
-    if (this.changes === 0) {
+    if (result.rowsAffected === 0) {
       return res.status(404).json({ error: 'Profile picture not found' });
     }
     
     res.json({ success: true, message: 'Profile picture deleted successfully' });
-  });
+  } catch (err) {
+    console.error('Database error:', err);
+    return res.status(500).json({ error: 'Failed to delete profile picture' });
+  }
 });
 
 // ============================================================================
-// SKILLS API ENDPOINTS - Add these to your server.js
+// SKILLS ENDPOINTS
 // ============================================================================
 
-// GET user's skills
-app.get('/api/skills/:userId', (req, res) => {
+// GET skills
+app.get('/api/skills/:userId', async (req, res) => {
   const { userId } = req.params;
   
-  const query = `
-    SELECT skill_id, skill_name, created_at
-    FROM skills 
-    WHERE user_id = ?
-    ORDER BY created_at DESC
-  `;
-  
-  db.all(query, [userId], (err, rows) => {
-    if (err) {
-      console.error('Error fetching skills:', err);
-      return res.status(500).json({ error: 'Failed to fetch skills' });
-    }
+  try {
+    const result = await db.execute({
+      sql: `SELECT skill_id, skill_name, created_at FROM skills WHERE user_id = ? ORDER BY created_at DESC`,
+      args: [userId]
+    });
     
-    res.json({ success: true, skills: rows });
-  });
+    res.json({ success: true, skills: result.rows });
+  } catch (err) {
+    console.error('Error fetching skills:', err);
+    return res.status(500).json({ error: 'Failed to fetch skills' });
+  }
 });
 
-// ADD a new skill
-app.post('/api/skills', (req, res) => {
+// ADD skill
+app.post('/api/skills', async (req, res) => {
   const { userId, skillName } = req.body;
   
   if (!userId || !skillName) {
     return res.status(400).json({ error: 'userId and skillName are required' });
   }
   
-  const query = `
-    INSERT INTO skills (user_id, skill_name)
-    VALUES (?, ?)
-  `;
-  
-  db.run(query, [userId, skillName.trim()], function(err) {
-    if (err) {
-      if (err.message.includes('UNIQUE constraint')) {
-        return res.status(400).json({ error: 'Skill already exists' });
-      }
-      console.error('Error adding skill:', err);
-      return res.status(500).json({ error: 'Failed to add skill' });
-    }
+  try {
+    const result = await db.execute({
+      sql: `INSERT INTO skills (user_id, skill_name) VALUES (?, ?)`,
+      args: [userId, skillName.trim()]
+    });
     
     res.json({ 
       success: true, 
       message: 'Skill added successfully',
       skill: {
-        skill_id: this.lastID,
+        skill_id: result.lastInsertRowid,
         skill_name: skillName.trim()
       }
     });
-  });
+  } catch (err) {
+    if (err.message.includes('UNIQUE constraint')) {
+      return res.status(400).json({ error: 'Skill already exists' });
+    }
+    console.error('Error adding skill:', err);
+    return res.status(500).json({ error: 'Failed to add skill' });
+  }
 });
 
-// DELETE a skill
-app.delete('/api/skills/:skillId', (req, res) => {
+// DELETE skill
+app.delete('/api/skills/:skillId', async (req, res) => {
   const { skillId } = req.params;
   
-  const query = 'DELETE FROM skills WHERE skill_id = ?';
-  
-  db.run(query, [skillId], function(err) {
-    if (err) {
-      console.error('Error deleting skill:', err);
-      return res.status(500).json({ error: 'Failed to delete skill' });
-    }
+  try {
+    const result = await db.execute({
+      sql: 'DELETE FROM skills WHERE skill_id = ?',
+      args: [skillId]
+    });
     
-    if (this.changes === 0) {
+    if (result.rowsAffected === 0) {
       return res.status(404).json({ error: 'Skill not found' });
     }
     
     res.json({ success: true, message: 'Skill deleted successfully' });
-  });
+  } catch (err) {
+    console.error('Error deleting skill:', err);
+    return res.status(500).json({ error: 'Failed to delete skill' });
+  }
 });
 
-// BULK UPDATE skills (optional - for replacing all skills at once)
-app.put('/api/skills/bulk/:userId', (req, res) => {
+// BULK UPDATE skills
+app.put('/api/skills/bulk/:userId', async (req, res) => {
   const { userId } = req.params;
-  const { skills } = req.body; // Array of skill names
+  const { skills } = req.body;
   
   if (!Array.isArray(skills)) {
     return res.status(400).json({ error: 'skills must be an array' });
   }
   
-  // Start transaction
-  db.serialize(() => {
-    // Delete existing skills
-    db.run('DELETE FROM skills WHERE user_id = ?', [userId], (err) => {
-      if (err) {
-        console.error('Error deleting old skills:', err);
-        return res.status(500).json({ error: 'Failed to update skills' });
-      }
-      
-      if (skills.length === 0) {
-        return res.json({ success: true, message: 'All skills removed' });
-      }
-      
-      // Insert new skills
-      const stmt = db.prepare('INSERT INTO skills (user_id, skill_name) VALUES (?, ?)');
-      
-      skills.forEach(skill => {
-        stmt.run([userId, skill.trim()]);
-      });
-      
-      stmt.finalize((err) => {
-        if (err) {
-          console.error('Error inserting skills:', err);
-          return res.status(500).json({ error: 'Failed to update skills' });
-        }
-        
-        res.json({ success: true, message: 'Skills updated successfully' });
-      });
+  try {
+    await db.execute({
+      sql: 'DELETE FROM skills WHERE user_id = ?',
+      args: [userId]
     });
-  });
+    
+    if (skills.length === 0) {
+      return res.json({ success: true, message: 'All skills removed' });
+    }
+    
+    for (const skill of skills) {
+      await db.execute({
+        sql: 'INSERT INTO skills (user_id, skill_name) VALUES (?, ?)',
+        args: [userId, skill.trim()]
+      });
+    }
+    
+    res.json({ success: true, message: 'Skills updated successfully' });
+  } catch (err) {
+    console.error('Error updating skills:', err);
+    return res.status(500).json({ error: 'Failed to update skills' });
+  }
 });
 
 // ============================================================================
 // ANALYTICS ENDPOINTS
 // ============================================================================
 
-// Track user activity (call this from frontend on key actions)
-app.post('/api/analytics/track', (req, res) => {
+// Track activity
+app.post('/api/analytics/track', async (req, res) => {
   const { userId, activityType } = req.body;
   
   if (!userId || !activityType) {
@@ -2015,157 +1703,143 @@ app.post('/api/analytics/track', (req, res) => {
   }
   
   const activityDate = new Date().toISOString().split('T')[0];
-  const query = `
-    INSERT INTO user_activity (user_id, activity_type, activity_date)
-    VALUES (?, ?, ?)
-  `;
   
-  db.run(query, [userId, activityType, activityDate], function(err) {
-    if (err) {
-      console.error('Error tracking activity:', err);
-      return res.status(500).json({ error: 'Failed to track activity' });
-    }
+  try {
+    await db.execute({
+      sql: `INSERT INTO user_activity (user_id, activity_type, activity_date) VALUES (?, ?, ?)`,
+      args: [userId, activityType, activityDate]
+    });
     res.json({ success: true });
-  });
+  } catch (err) {
+    console.error('Error tracking activity:', err);
+    return res.status(500).json({ error: 'Failed to track activity' });
+  }
 });
 
-// Get daily users count (last 30 days)
-app.get('/api/analytics/daily-users', (req, res) => {
-  const query = `
-    SELECT 
-      activity_date as date,
-      COUNT(DISTINCT user_id) as count
-    FROM user_activity
-    WHERE activity_type = 'login'
-      AND activity_date >= date('now', '-30 days')
-    GROUP BY activity_date
-    ORDER BY activity_date ASC
-  `;
-  
-  db.all(query, [], (err, rows) => {
-    if (err) {
-      console.error('Error fetching daily users:', err);
-      return res.status(500).json({ error: 'Failed to fetch data' });
-    }
-    res.json({ success: true, data: rows });
-  });
+// Daily users
+app.get('/api/analytics/daily-users', async (req, res) => {
+  try {
+    const result = await db.execute(`
+      SELECT 
+        activity_date as date,
+        COUNT(DISTINCT user_id) as count
+      FROM user_activity
+      WHERE activity_type = 'login'
+        AND activity_date >= date('now', '-30 days')
+      GROUP BY activity_date
+      ORDER BY activity_date ASC
+    `);
+    
+    res.json({ success: true, data: result.rows });
+  } catch (err) {
+    console.error('Error fetching daily users:', err);
+    return res.status(500).json({ error: 'Failed to fetch data' });
+  }
 });
 
-// Get resumes generated count (last 30 days)
-app.get('/api/analytics/resumes', (req, res) => {
-  const query = `
-    SELECT 
-      DATE(created_at) as date,
-      COUNT(*) as count
-    FROM resume
-    WHERE created_at >= date('now', '-30 days')
-    GROUP BY DATE(created_at)
-    ORDER BY date ASC
-  `;
-  
-  db.all(query, [], (err, rows) => {
-    if (err) {
-      console.error('Error fetching resume stats:', err);
-      return res.status(500).json({ error: 'Failed to fetch data' });
-    }
-    res.json({ success: true, data: rows });
-  });
+// Resumes stats
+app.get('/api/analytics/resumes', async (req, res) => {
+  try {
+    const result = await db.execute(`
+      SELECT 
+        DATE(created_at) as date,
+        COUNT(*) as count
+      FROM resume
+      WHERE created_at >= date('now', '-30 days')
+      GROUP BY DATE(created_at)
+      ORDER BY date ASC
+    `);
+    
+    res.json({ success: true, data: result.rows });
+  } catch (err) {
+    console.error('Error fetching resume stats:', err);
+    return res.status(500).json({ error: 'Failed to fetch data' });
+  }
 });
 
-// Get job applications count (last 30 days)
-app.get('/api/analytics/applications', (req, res) => {
-  const query = `
-    SELECT 
-      DATE(applied_at) as date,
-      COUNT(*) as count
-    FROM application
-    WHERE applied_at >= date('now', '-30 days')
-    GROUP BY DATE(applied_at)
-    ORDER BY date ASC
-  `;
-  
-  db.all(query, [], (err, rows) => {
-    if (err) {
-      console.error('Error fetching application stats:', err);
-      return res.status(500).json({ error: 'Failed to fetch data' });
-    }
-    res.json({ success: true, data: rows });
-  });
+// Applications stats
+app.get('/api/analytics/applications', async (req, res) => {
+  try {
+    const result = await db.execute(`
+      SELECT 
+        DATE(applied_at) as date,
+        COUNT(*) as count
+      FROM application
+      WHERE applied_at >= date('now', '-30 days')
+      GROUP BY DATE(applied_at)
+      ORDER BY date ASC
+    `);
+    
+    res.json({ success: true, data: result.rows });
+  } catch (err) {
+    console.error('Error fetching application stats:', err);
+    return res.status(500).json({ error: 'Failed to fetch data' });
+  }
 });
 
-// Get job matches/recommendations count (last 30 days)
-app.get('/api/analytics/matches', (req, res) => {
-  const query = `
-    SELECT 
-      activity_date as date,
-      COUNT(*) as count
-    FROM user_activity
-    WHERE activity_type = 'recommendation_made'
-      AND activity_date >= date('now', '-30 days')
-    GROUP BY activity_date
-    ORDER BY activity_date ASC
-  `;
-  
-  db.all(query, [], (err, rows) => {
-    if (err) {
-      console.error('Error fetching match stats:', err);
-      return res.status(500).json({ error: 'Failed to fetch data' });
-    }
-    res.json({ success: true, data: rows });
-  });
+// Matches stats
+app.get('/api/analytics/matches', async (req, res) => {
+  try {
+    const result = await db.execute(`
+      SELECT 
+        activity_date as date,
+        COUNT(*) as count
+      FROM user_activity
+      WHERE activity_type = 'recommendation_made'
+        AND activity_date >= date('now', '-30 days')
+      GROUP BY activity_date
+      ORDER BY activity_date ASC
+    `);
+    
+    res.json({ success: true, data: result.rows });
+  } catch (err) {
+    console.error('Error fetching match stats:', err);
+    return res.status(500).json({ error: 'Failed to fetch data' });
+  }
 });
 
-// Get summary statistics
-app.get('/api/analytics/summary', (req, res) => {
-  const queries = {
-    totalUsers: 'SELECT COUNT(*) as count FROM user WHERE role = "job_seeker"',
-    totalResumes: 'SELECT COUNT(*) as count FROM resume',
-    totalApplications: 'SELECT COUNT(*) as count FROM application',
-    totalJobs: 'SELECT COUNT(*) as count FROM job',
-    activeUsersToday: `
+// Summary stats
+app.get('/api/analytics/summary', async (req, res) => {
+  try {
+    const totalUsersResult = await db.execute('SELECT COUNT(*) as count FROM user WHERE role = "job_seeker"');
+    const totalResumesResult = await db.execute('SELECT COUNT(*) as count FROM resume');
+    const totalApplicationsResult = await db.execute('SELECT COUNT(*) as count FROM application');
+    const totalJobsResult = await db.execute('SELECT COUNT(*) as count FROM job');
+    const activeUsersTodayResult = await db.execute(`
       SELECT COUNT(DISTINCT user_id) as count 
       FROM user_activity 
       WHERE activity_date = date('now')
-    `,
-    applicationsToday: `
+    `);
+    const applicationsTodayResult = await db.execute(`
       SELECT COUNT(*) as count 
       FROM application 
       WHERE DATE(applied_at) = date('now')
-    `
-  };
-  
-  const results = {};
-  let completed = 0;
-  const total = Object.keys(queries).length;
-  
-  Object.entries(queries).forEach(([key, query]) => {
-    db.get(query, [], (err, row) => {
-      if (err) {
-        console.error(`Error fetching ${key}:`, err);
-        results[key] = 0;
-      } else {
-        results[key] = row.count;
-      }
-      
-      completed++;
-      if (completed === total) {
-        res.json({ success: true, summary: results });
+    `);
+    
+    res.json({ 
+      success: true, 
+      summary: {
+        totalUsers: totalUsersResult.rows[0].count,
+        totalResumes: totalResumesResult.rows[0].count,
+        totalApplications: totalApplicationsResult.rows[0].count,
+        totalJobs: totalJobsResult.rows[0].count,
+        activeUsersToday: activeUsersTodayResult.rows[0].count,
+        applicationsToday: applicationsTodayResult.rows[0].count
       }
     });
-  });
+  } catch (err) {
+    console.error('Error fetching summary:', err);
+    return res.status(500).json({ error: 'Failed to fetch summary' });
+  }
 });
 
 // ============================================================================
-// GOOGLE OAUTH LOGIN/SIGNUP ENDPOINT
+// GOOGLE OAUTH
 // ============================================================================
-// Add this endpoint to your server.js (after your other auth endpoints)
-
 app.post("/api/auth/google", async (req, res) => {
   try {
     const { email, firstname, lastname, googleId, picture, email_verified } = req.body;
 
-
-    // Check if email is verified by Google
     if (!email_verified) {
       return res.status(400).json({ 
         success: false, 
@@ -2173,125 +1847,74 @@ app.post("/api/auth/google", async (req, res) => {
       });
     }
 
-    // Check if user exists
-    const checkQuery = 'SELECT * FROM user WHERE LOWER(email) = LOWER(?)';
-    
-    db.get(checkQuery, [email], async (err, existingUser) => {
-      if (err) {
-        console.error("DB Error:", err);
-        return res.status(500).json({ success: false, message: "Database error" });
-      }
+    const checkResult = await db.execute({
+      sql: 'SELECT * FROM user WHERE LOWER(email) = LOWER(?)',
+      args: [email]
+    });
 
-      let user;
+    let user = checkResult.rows[0];
 
-      if (existingUser) {
-
-        //console.log("✅ Existing user found:", email);
-        user = existingUser;
-
-        // Check if account is suspended
-        if (user.status === 'suspended') {
-          return res.status(403).json({ 
-            success: false,
-            status: "suspended",
-            message: "Your account has been suspended. Please contact support at taratrabaho@gmail.com for assistance." 
-          });
-        }
-
-        // Update google_id if not set
-        if (!user.google_id) {
-          console.log("🔗 Linking Google account to existing user");
-          db.run('UPDATE user SET google_id = ? WHERE user_id = ?', [googleId, user.user_id], (err) => {
-            if (err) console.error("Error updating google_id:", err);
-          });
-        }
-
-        // Track login activity
-        const activityQuery = `
-          INSERT INTO user_activity (user_id, activity_type, activity_date)
-          VALUES (?, 'login', date('now'))
-        `;
-        db.run(activityQuery, [user.user_id], (err) => {
-          if (err) console.error('Error tracking login:', err);
-        });
-
-      } else {
-        //console.log("🆕 Creating new user from Google:", email);
-
-        // Extract username from email (before @)
-        const username = email.split('@')[0];
-        
-        const insertQuery = `
-          INSERT INTO user (
-            firstname, lastname, username, email, google_id, 
-            verified, role, status, password_hash
-          )
-          VALUES (?, ?, ?, ?, ?, 1, 'job_seeker', 'approved', '')
-        `;
-
-        await new Promise((resolve, reject) => {
-          db.run(
-            insertQuery, 
-            [firstname || 'User', lastname || '', username, email, googleId],
-            function(err) {
-              if (err) {
-                console.error("Error creating user:", err);
-                
-                // Handle duplicate email (race condition)
-                if (err.message.includes("UNIQUE constraint")) {
-                  reject(new Error("Email already exists"));
-                } else {
-                  reject(err);
-                }
-              } else {
-                //console.log("✅ User created successfully with ID:", this.lastID);
-                
-                // Fetch the newly created user
-                db.get('SELECT * FROM user WHERE user_id = ?', [this.lastID], (err, newUser) => {
-                  if (err) {
-                    reject(err);
-                  } else {
-                    user = newUser;
-                    
-                    // Track signup activity
-                    const activityQuery = `
-                      INSERT INTO user_activity (user_id, activity_type, activity_date)
-                      VALUES (?, 'signup', date('now'))
-                    `;
-                    db.run(activityQuery, [user.user_id], (err) => {
-                      if (err) console.error('Error tracking signup:', err);
-                    });
-                    
-                    resolve();
-                  }
-                });
-              }
-            }
-          );
+    if (user) {
+      if (user.status === 'suspended') {
+        return res.status(403).json({ 
+          success: false,
+          status: "suspended",
+          message: "Your account has been suspended. Please contact support at taratrabaho@gmail.com for assistance." 
         });
       }
 
-      // Create JWT token
-      const token = jwt.sign(
-        { id: user.user_id, email: user.email, role: user.role }, 
-        SECRET_KEY, 
-        { expiresIn: "7d" }
-      );
+      if (!user.google_id) {
+        await db.execute({
+          sql: 'UPDATE user SET google_id = ? WHERE user_id = ?',
+          args: [googleId, user.user_id]
+        });
+      }
 
-
-      res.json({
-        success: true,
-        message: "Google login successful",
-        token,
-        user: {
-          id: user.user_id,
-          email: user.email,
-          firstname: user.firstname,
-          lastname: user.lastname,
-          role: user.role,
-          status: user.status,
-        },
+      await db.execute({
+        sql: "INSERT INTO user_activity (user_id, activity_type, activity_date) VALUES (?, 'login', date('now'))",
+        args: [user.user_id]
       });
+
+    } else {
+      const username = email.split('@')[0];
+      
+      const insertResult = await db.execute({
+        sql: `INSERT INTO user (firstname, lastname, username, email, google_id, verified, role, status, password_hash)
+              VALUES (?, ?, ?, ?, ?, 1, 'job_seeker', 'approved', '')`,
+        args: [firstname || 'User', lastname || '', username, email, googleId]
+      });
+
+      const userResult = await db.execute({
+        sql: 'SELECT * FROM user WHERE user_id = ?',
+        args: [insertResult.lastInsertRowid]
+      });
+
+      user = userResult.rows[0];
+
+      await db.execute({
+        sql: "INSERT INTO user_activity (user_id, activity_type, activity_date) VALUES (?, 'signup', date('now'))",
+        args: [user.user_id]
+      });
+    }
+
+    const token = jwt.sign(
+      { id: user.user_id, email: user.email, role: user.role }, 
+      SECRET_KEY, 
+      { expiresIn: "7d" }
+    );
+
+    res.json({
+      success: true,
+      message: "Google login successful",
+      token,
+      user: {
+        id: user.user_id,
+        email: user.email,
+        firstname: user.firstname,
+        lastname: user.lastname,
+        role: user.role,
+        status: user.status,
+      },
     });
 
   } catch (error) {
@@ -2311,37 +1934,39 @@ app.post("/api/auth/google", async (req, res) => {
   }
 });
 
-
 // ============================================================================
 // UPDATE USER ROLE
 // ============================================================================
-app.put("/api/users/:user_id/role", (req, res) => {
+app.put("/api/users/:user_id/role", async (req, res) => {
   const { user_id } = req.params;
   const { role } = req.body;
 
-  // Validate role
   if (!['job_seeker', 'admin'].includes(role)) {
     return res.status(400).json({ message: "Invalid role" });
   }
 
-  const query = `UPDATE user SET role = ? WHERE user_id = ?`;
-  db.run(query, [role, user_id], function (err) {
-    if (err) {
-      console.error("Error updating user role:", err);
-      return res.status(500).json({ message: "Database error" });
-    }
+  try {
+    const result = await db.execute({
+      sql: `UPDATE user SET role = ? WHERE user_id = ?`,
+      args: [role, user_id]
+    });
 
-    if (this.changes === 0) {
+    if (result.rowsAffected === 0) {
       return res.status(404).json({ message: "User not found" });
     }
 
     res.json({ message: "User role updated successfully" });
-  });
+  } catch (err) {
+    console.error("Error updating user role:", err);
+    return res.status(500).json({ message: "Database error" });
+  }
 });
 
 // ============================================================================
-// FORGET PASSWORD - Send Reset Email
+// PASSWORD RESET ENDPOINTS
 // ============================================================================
+
+// Forget password
 app.post("/api/forget-password", async (req, res) => {
   const { email } = req.body;
 
@@ -2351,120 +1976,95 @@ app.post("/api/forget-password", async (req, res) => {
 
   const normalizedEmail = email.toLowerCase().trim();
 
-  // Check if user exists
-  const query = `SELECT * FROM user WHERE LOWER(email) = LOWER(?)`;
-  db.get(query, [normalizedEmail], async (err, user) => {
-    if (err) {
-      console.error("DB Error:", err);
-      return res.status(500).json({ success: false, message: "Database error" });
-    }
+  try {
+    const result = await db.execute({
+      sql: `SELECT * FROM user WHERE LOWER(email) = LOWER(?)`,
+      args: [normalizedEmail]
+    });
+
+    const user = result.rows[0];
 
     if (!user) {
-      // Don't reveal if email exists (security best practice)
       return res.json({ 
         success: true, 
         message: "If this email exists, a reset link has been sent." 
       });
     }
 
-    // Check if this is a Google-only account
     if (user.google_id && (!user.password_hash || user.password_hash === '')) {
       return res.json({ 
         success: true, 
         message: "If this email exists, a reset link has been sent." 
-        // Don't reveal it's a Google account
       });
     }
 
-    // Generate reset token (cryptographically secure)
     const resetToken = crypto.randomBytes(32).toString('hex');
     
-    // Store token with expiration
     resetTokenStore[resetToken] = {
       email: normalizedEmail,
       userId: user.user_id,
-      expires: Date.now() + 30 * 60 * 1000 // 30 minutes
+      expires: Date.now() + 30 * 60 * 1000
     };
 
-    // ✅ Hardcoded frontend URL (no .env needed)
     const resetLink = `https://tara-trabaho-secure-ai-powered-assi.vercel.app/reset-password/${resetToken}`;
-    
-    console.log('🔗 Generated reset link:', resetLink);
 
-    console.log('🔗 Reset link generated:', resetLink);
-
-    // Send email using SendGrid
-    try {
-      const msg = {
-        to: normalizedEmail,
-        from: process.env.SENDGRID_FROM_EMAIL,
-        subject: "Reset Your Password - TaraTrabaho",
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <div style="background: linear-gradient(135deg, #BAE8E8, #FBDA23); padding: 20px; border-radius: 10px 10px 0 0;">
-              <h2 style="color: #272343; margin: 0;">🔐 Password Reset Request</h2>
+    const msg = {
+      to: normalizedEmail,
+      from: process.env.SENDGRID_FROM_EMAIL,
+      subject: "Reset Your Password - TaraTrabaho",
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: linear-gradient(135deg, #BAE8E8, #FBDA23); padding: 20px; border-radius: 10px 10px 0 0;">
+            <h2 style="color: #272343; margin: 0;">🔐 Password Reset Request</h2>
+          </div>
+          
+          <div style="background: white; padding: 30px; border: 1px solid #ddd; border-radius: 0 0 10px 10px;">
+            <p>Hi <strong>${user.firstname}</strong>,</p>
+            
+            <p>We received a request to reset your password for your TaraTrabaho account.</p>
+            
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${resetLink}" 
+                style="background: #2C275C; color: white; padding: 15px 40px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold; font-size: 16px;">
+                Reset Password
+              </a>
             </div>
             
-            <div style="background: white; padding: 30px; border: 1px solid #ddd; border-radius: 0 0 10px 10px;">
-              <p>Hi <strong>${user.firstname}</strong>,</p>
-              
-              <p>We received a request to reset your password for your TaraTrabaho account.</p>
-              
-              <div style="text-align: center; margin: 30px 0;">
-                <a href="${resetLink}" 
-                  style="background: #2C275C; color: white; padding: 15px 40px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold; font-size: 16px;">
-                  Reset Password
-                </a>
-              </div>
-              
-              <p style="color: #666; font-size: 13px; margin-top: 30px;">
-                If the button doesn't work, copy and paste this link in your browser:<br>
-                <a href="${resetLink}" style="color: #2C275C; word-break: break-all; font-size: 12px;">${resetLink}</a>
-              </p>
-              
-              <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin-top: 20px; border-radius: 4px;">
-                <p style="color: #856404; margin: 0; font-weight: bold;">
-                  ⚠️ This link will expire in 30 minutes.
-                </p>
-              </div>
-              
-              <p style="color: #666; font-size: 13px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;">
-                If you didn't request this password reset, please ignore this email. Your password won't change unless you click the link above.
-              </p>
-              
-              <p style="color: #999; font-size: 12px; margin-top: 20px;">
-                For security reasons, this link can only be used once.
-              </p>
+            <p style="color: #666; font-size: 13px; margin-top: 30px;">
+              If the button doesn't work, copy and paste this link in your browser:<br>
+              <a href="${resetLink}" style="color: #2C275C; word-break: break-all; font-size: 12px;">${resetLink}</a>
+            </p>
+            
+            <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin-top: 20px; border-radius: 4px;">
+              <p style="color: #856404; margin: 0; font-weight: bold;">⚠️ This link will expire in 30 minutes.</p>
             </div>
+            
+            <p style="color: #666; font-size: 13px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;">
+              If you didn't request this password reset, please ignore this email. Your password won't change unless you click the link above.
+            </p>
           </div>
-        `
-      };
+        </div>
+      `
+    };
 
-      await sgMail.send(msg);
-      console.log('✅ Password reset email sent to:', normalizedEmail);
+    await sgMail.send(msg);
+    console.log('✅ Password reset email sent to:', normalizedEmail);
 
-      res.json({ 
-        success: true, 
-        message: "If this email exists, a reset link has been sent. Please check your inbox." 
-      });
+    res.json({ 
+      success: true, 
+      message: "If this email exists, a reset link has been sent. Please check your inbox." 
+    });
 
-    } catch (mailErr) {
-      console.error("❌ Error sending reset email:", mailErr.response?.body || mailErr);
-      
-      // Clean up token if email fails
-      delete resetTokenStore[resetToken];
-      
-      res.status(500).json({ 
-        success: false, 
-        message: "Failed to send reset email. Please try again later." 
-      });
-    }
-  });
+  } catch (error) {
+    console.error("❌ Error in forget-password:", error);
+    res.status(500).json({ 
+      success: false, 
+      message: "Failed to send reset email. Please try again later." 
+    });
+  }
 });
 
-// ============================================================================
-// VERIFY RESET TOKEN
-// ============================================================================
+// Verify reset token
 app.get("/api/verify-reset-token/:token", (req, res) => {
   const { token } = req.params;
 
@@ -2477,7 +2077,6 @@ app.get("/api/verify-reset-token/:token", (req, res) => {
     });
   }
 
-  // Check expiration
   if (Date.now() > tokenData.expires) {
     delete resetTokenStore[token];
     return res.status(400).json({ 
@@ -2492,13 +2091,10 @@ app.get("/api/verify-reset-token/:token", (req, res) => {
   });
 });
 
-// ============================================================================
-// RESET PASSWORD
-// ============================================================================
+// Reset password
 app.post("/api/reset-password", async (req, res) => {
   const { token, password } = req.body;
 
-  // Validation
   if (!token || !password) {
     return res.status(400).json({ 
       success: false, 
@@ -2513,7 +2109,6 @@ app.post("/api/reset-password", async (req, res) => {
     });
   }
 
-  // Verify token
   const tokenData = resetTokenStore[token];
   
   if (!tokenData) {
@@ -2523,7 +2118,6 @@ app.post("/api/reset-password", async (req, res) => {
     });
   }
 
-  // Check expiration
   if (Date.now() > tokenData.expires) {
     delete resetTokenStore[token];
     return res.status(400).json({ 
@@ -2533,58 +2127,27 @@ app.post("/api/reset-password", async (req, res) => {
   }
 
   try {
-    // Hash new password
     const password_hash = await bcrypt.hash(password, 10);
 
-    // Update password in database
-    const query = `UPDATE user SET password_hash = ? WHERE email = ?`;
-    
-    db.run(query, [password_hash, tokenData.email], function(err) {
-      if (err) {
-        console.error("❌ Error updating password:", err);
-        return res.status(500).json({ 
-          success: false, 
-          message: "Failed to reset password. Please try again." 
-        });
-      }
+    const result = await db.execute({
+      sql: `UPDATE user SET password_hash = ? WHERE email = ?`,
+      args: [password_hash, tokenData.email]
+    });
 
-      if (this.changes === 0) {
-        return res.status(404).json({ 
-          success: false, 
-          message: "User not found" 
-        });
-      }
-
-      // ✅ Delete used token (single-use)
-      delete resetTokenStore[token];
-
-      console.log('✅ Password reset successful for:', tokenData.email);
-
-      // Optional: Send confirmation email
-      sendPasswordResetConfirmation(tokenData.email);
-
-      res.json({ 
-        success: true, 
-        message: "Password reset successfully! You can now login with your new password." 
+    if (result.rowsAffected === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "User not found" 
       });
-    });
+    }
 
-  } catch (error) {
-    console.error("❌ Reset password error:", error);
-    res.status(500).json({ 
-      success: false, 
-      message: "Server error. Please try again later." 
-    });
-  }
-});
+    delete resetTokenStore[token];
 
-// ============================================================================
-// Send password reset confirmation email
-// ============================================================================
-async function sendPasswordResetConfirmation(email) {
-  try {
+    console.log('✅ Password reset successful for:', tokenData.email);
+
+    // Send confirmation email
     const msg = {
-      to: email,
+      to: tokenData.email,
       from: process.env.SENDGRID_FROM_EMAIL,
       subject: "Password Reset Confirmation - TaraTrabaho",
       html: `
@@ -2595,7 +2158,6 @@ async function sendPasswordResetConfirmation(email) {
           
           <div style="background: white; padding: 30px; border: 1px solid #ddd; border-radius: 0 0 10px 10px;">
             <p>Your TaraTrabaho password has been successfully reset.</p>
-            
             <p>You can now login with your new password.</p>
             
             <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin-top: 20px; border-radius: 4px;">
@@ -2609,15 +2171,22 @@ async function sendPasswordResetConfirmation(email) {
     };
 
     await sgMail.send(msg);
-    console.log('✅ Password reset confirmation sent to:', email);
-  } catch (err) {
-    console.error('❌ Error sending confirmation email:', err);
-  }
-}
 
-// ============================================================================
-// CLEANUP: Remove expired tokens periodically 
-// ============================================================================
+    res.json({ 
+      success: true, 
+      message: "Password reset successfully! You can now login with your new password." 
+    });
+
+  } catch (error) {
+    console.error("❌ Reset password error:", error);
+    res.status(500).json({ 
+      success: false, 
+      message: "Server error. Please try again later." 
+    });
+  }
+});
+
+// Cleanup expired tokens
 setInterval(() => {
   const now = Date.now();
   let cleanedCount = 0;
@@ -2632,28 +2201,26 @@ setInterval(() => {
   if (cleanedCount > 0) {
     console.log(`🧹 Cleaned up ${cleanedCount} expired reset tokens`);
   }
-}, 15 * 60 * 1000); // Run every 15 minutes
+}, 15 * 60 * 1000);
 
 // ============================================================================
-// CHECK AUTH METHOD - Determine if account uses Google or Email/Password
+// CHECK AUTH METHOD
 // ============================================================================
-app.post("/api/check-auth-method", (req, res) => {
+app.post("/api/check-auth-method", async (req, res) => {
   const { email } = req.body;
 
   if (!email) {
     return res.status(400).json({ error: "Email is required" });
   }
 
-  // Use LOWER() for case-insensitive comparison
-  const query = `SELECT google_id, password_hash FROM user WHERE LOWER(email) = LOWER(?)`;
-  
-  db.get(query, [email], (err, user) => {
-    if (err) {
-      console.error("DB Error:", err);
-      return res.status(500).json({ error: "Database error" });
-    }
+  try {
+    const result = await db.execute({
+      sql: `SELECT google_id, password_hash FROM user WHERE LOWER(email) = LOWER(?)`,
+      args: [email]
+    });
 
-    // Account doesn't exist
+    const user = result.rows[0];
+
     if (!user) {
       return res.json({ 
         isGoogleAccount: false,
@@ -2661,47 +2228,44 @@ app.post("/api/check-auth-method", (req, res) => {
       });
     }
 
-    // Check if it's a Google-only account (has google_id but no password)
     const isGoogleOnly = user.google_id && (!user.password_hash || user.password_hash === '');
 
     res.json({ 
       isGoogleAccount: isGoogleOnly,
       exists: true 
     });
-  });
+  } catch (err) {
+    console.error("DB Error:", err);
+    return res.status(500).json({ error: "Database error" });
+  }
 });
-
 
 // ============================================================================
 // ADMIN SAVED JOBS ENDPOINTS
 // ============================================================================
 
-// GET admin's saved jobs
-app.get('/api/admin-saved-jobs/:userId', (req, res) => {
+// GET admin saved jobs
+app.get('/api/admin-saved-jobs/:userId', async (req, res) => {
   const { userId } = req.params;
   
   console.log('📥 Fetching saved jobs for user:', userId);
   
-  const query = `
-    SELECT saved_job_id, job_id, saved_at
-    FROM admin_saved_jobs
-    WHERE user_id = ?
-    ORDER BY saved_at DESC
-  `;
-  
-  db.all(query, [userId], (err, rows) => {
-    if (err) {
-      console.error('❌ Error fetching admin saved jobs:', err);
-      return res.status(500).json({ error: 'Failed to fetch saved jobs' });
-    }
+  try {
+    const result = await db.execute({
+      sql: `SELECT saved_job_id, job_id, saved_at FROM admin_saved_jobs WHERE user_id = ? ORDER BY saved_at DESC`,
+      args: [userId]
+    });
     
-    console.log('✅ Found saved jobs:', rows);
-    res.json({ success: true, savedJobs: rows });
-  });
+    console.log('✅ Found saved jobs:', result.rows);
+    res.json({ success: true, savedJobs: result.rows });
+  } catch (err) {
+    console.error('❌ Error fetching admin saved jobs:', err);
+    return res.status(500).json({ error: 'Failed to fetch saved jobs' });
+  }
 });
 
-// SAVE a job (admin)
-app.post('/api/admin-saved-jobs', (req, res) => {
+// SAVE job (admin)
+app.post('/api/admin-saved-jobs', async (req, res) => {
   const { userId, jobId } = req.body;
   
   if (!userId || !jobId) {
@@ -2710,53 +2274,56 @@ app.post('/api/admin-saved-jobs', (req, res) => {
   
   console.log('💾 Saving job:', jobId, 'for user:', userId);
   
-  const query = `
-    INSERT INTO admin_saved_jobs (user_id, job_id)
-    VALUES (?, ?)
-  `;
-  
-  db.run(query, [userId, jobId], function(err) {
-    if (err) {
-      if (err.message.includes('UNIQUE constraint')) {
-        return res.status(400).json({ error: 'Job already saved' });
-      }
-      console.error('❌ Error saving job:', err);
-      return res.status(500).json({ error: 'Failed to save job' });
-    }
+  try {
+    const result = await db.execute({
+      sql: `INSERT INTO admin_saved_jobs (user_id, job_id) VALUES (?, ?)`,
+      args: [userId, jobId]
+    });
     
-    console.log('✅ Job saved successfully with ID:', this.lastID);
+    console.log('✅ Job saved successfully with ID:', result.lastInsertRowid);
     res.json({ 
       success: true, 
       message: 'Job saved successfully',
-      savedJobId: this.lastID
+      savedJobId: result.lastInsertRowid
     });
-  });
+  } catch (err) {
+    if (err.message.includes('UNIQUE constraint')) {
+      return res.status(400).json({ error: 'Job already saved' });
+    }
+    console.error('❌ Error saving job:', err);
+    return res.status(500).json({ error: 'Failed to save job' });
+  }
 });
 
-// UNSAVE a job (admin)
-app.delete('/api/admin-saved-jobs/:userId/:jobId', (req, res) => {
+// UNSAVE job (admin)
+app.delete('/api/admin-saved-jobs/:userId/:jobId', async (req, res) => {
   const { userId, jobId } = req.params;
   
   console.log('🗑️ Unsaving job:', jobId, 'for user:', userId);
   
-  const query = 'DELETE FROM admin_saved_jobs WHERE user_id = ? AND job_id = ?';
-  
-  db.run(query, [userId, jobId], function(err) {
-    if (err) {
-      console.error('❌ Error unsaving job:', err);
-      return res.status(500).json({ error: 'Failed to unsave job' });
-    }
+  try {
+    const result = await db.execute({
+      sql: 'DELETE FROM admin_saved_jobs WHERE user_id = ? AND job_id = ?',
+      args: [userId, jobId]
+    });
     
-    if (this.changes === 0) {
+    if (result.rowsAffected === 0) {
       return res.status(404).json({ error: 'Saved job not found' });
     }
     
     console.log('✅ Job unsaved successfully');
     res.json({ success: true, message: 'Job unsaved successfully' });
-  });
+  } catch (err) {
+    console.error('❌ Error unsaving job:', err);
+    return res.status(500).json({ error: 'Failed to unsave job' });
+  }
 });
+
 // ============================================================================
 // SERVER START
 // ============================================================================
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`✅ Server running on http://localhost:${PORT}`));
+app.listen(PORT, () => {
+  console.log(`✅ Server running on port ${PORT}`);
+  console.log(`🚀 Connected to Turso database`);
+});
