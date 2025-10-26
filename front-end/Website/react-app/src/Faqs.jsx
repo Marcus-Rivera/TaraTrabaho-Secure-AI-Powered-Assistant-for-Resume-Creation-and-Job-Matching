@@ -135,7 +135,7 @@ const Faqs = () => {
       answer: "OTP (One-Time Password) is a security code sent to your email during registration. It adds an extra layer of protection to prevent unauthorized access to your account and keeps your personal information safe."
     },
     {
-      category: "Account",
+      category: "Account NI KAYLE",
       question: "How can I reset my password?",
       answer: "Click 'Forgot Password?' on the login page and enter your email or phone number. You'll receive an email that contains instructions to reset your password. Follow the link provided to create a new password and regain access to your account."
     },
