@@ -10,6 +10,7 @@ const OtpPage = () => {
   const [otp, setOtp] = useState(["", "", "", ""]);
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
+  const [isVerifying, setIsVerifying] = useState(false);
 
   useEffect(() => {
     if (location.state?.email) {
@@ -146,9 +147,10 @@ const OtpPage = () => {
 
         <button
           onClick={handleVerify}
-          className="w-full bg-[#2C275C] text-white py-2 rounded-md font-semibold hover:bg-[#1b163e] transition"
+          disabled={isVerifying}
+          className="w-full bg-[#2C275C] text-white py-2 rounded-md font-semibold hover:bg-[#1b163e] transition disabled:opacity-50"
         >
-          Verify Code
+          {isVerifying ? "Verifying..." : "Verify Code"}
         </button>
 
         <p className="mt-4 text-sm">

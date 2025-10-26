@@ -319,6 +319,84 @@ app.post("/api/verify-otp", (req, res) => {
 
 
 // ============================================================================
+// SEND OTP (for resending)
+// ============================================================================
+app.post("/api/send-otp", async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ message: "Email is required" });
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+
+  // Check if temporary user data exists (meaning they're in signup flow)
+  const tempUser = tempUserStore[normalizedEmail];
+  
+  if (!tempUser) {
+    return res.status(400).json({ 
+      success: false, 
+      message: "No pending signup found. Please sign up first." 
+    });
+  }
+
+  // Generate new 4-digit OTP
+  const otp = crypto.randomInt(1000, 9999).toString();
+  otpStore[normalizedEmail] = { otp, expires: Date.now() + 5 * 60 * 1000 };
+
+  // Send OTP via email
+  try {
+    const msg = {
+      to: normalizedEmail,
+      from: process.env.SENDGRID_FROM_EMAIL,
+      subject: 'Tratrabaho Email Verification OTP - Resent',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: linear-gradient(135deg, #BAE8E8, #FBDA23); padding: 20px; border-radius: 10px 10px 0 0;">
+            <h2 style="color: #272343; margin: 0;">✉️ Email Verification (Resent)</h2>
+          </div>
+          
+          <div style="background: white; padding: 30px; border: 1px solid #ddd;">
+            <p>Welcome to <strong>TaraTrabaho</strong>!</p>
+            
+            <p>Your new verification code is:</p>
+            
+            <div style="text-align: center; margin: 30px 0;">
+              <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #2C275C; background: #f0f9ff; padding: 15px 30px; border-radius: 8px; display: inline-block;">
+                ${otp}
+              </span>
+            </div>
+            
+            <p style="color: #d32f2f; font-weight: bold;">
+              ⚠️ This code will expire in 5 minutes.
+            </p>
+            
+            <p style="color: #666; font-size: 14px; margin-top: 20px;">
+              If you didn't request this code, please ignore this email.
+            </p>
+          </div>
+        </div>
+      `
+    };
+
+    await sgMail.send(msg);
+    console.log('✅ OTP resent to:', normalizedEmail);
+
+    res.json({
+      success: true,
+      message: "OTP resent successfully! Check your email.",
+    });
+
+  } catch (mailErr) {
+    console.error("❌ Error resending OTP email:", mailErr.response?.body || mailErr);
+    res.status(500).json({
+      success: false,
+      message: "Failed to resend OTP. Please try again.",
+    });
+  }
+});
+
+// ============================================================================
 // VERIFY TOKEN ENDPOINT
 // ============================================================================
 app.post("/api/verifyToken", (req, res) => {
