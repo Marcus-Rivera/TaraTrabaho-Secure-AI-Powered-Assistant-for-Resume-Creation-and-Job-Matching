@@ -4,8 +4,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell
 } from 'recharts';
 
-// IMPORTANT: Import your API_BASE from your config
-// import { API_BASE } from "./config/api";
+import { API_BASE } from "./config/api";
 
 const Reports = () => {
   const [loading, setLoading] = useState(true);
