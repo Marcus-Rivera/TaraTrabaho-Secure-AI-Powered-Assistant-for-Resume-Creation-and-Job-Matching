@@ -24,15 +24,48 @@ const resetTokenStore = {};
 const multer = require('multer');
 const path = require('path');
 const rateLimit = require('express-rate-limit');
+const helmet = require("helmet");
 
 // Initialize Express application
 const app = express();
+
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false
+}));
 
 // API Key
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 // Middleware configuration
-app.use(cors());
+// CORS with specific origins
+const allowedOrigins = [
+  'https://tara-trabaho-secure-ai-powered-assi.vercel.app',
+  'http://localhost:3000',
+  'http://localhost:5173'
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+// Force HTTPS in production
+app.use((req, res, next) => {
+  if (req.header('x-forwarded-proto') !== 'https' && process.env.NODE_ENV === 'production') {
+    return res.redirect(`https://${req.header('host')}${req.url}`);
+  }
+  next();
+});
 app.use(express.json());
 app.use(bodyParser.json());
 app.set("trust proxy", 1);
