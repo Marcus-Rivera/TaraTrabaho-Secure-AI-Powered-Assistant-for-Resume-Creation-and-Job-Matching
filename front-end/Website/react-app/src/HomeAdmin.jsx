@@ -53,7 +53,7 @@ const SidebarContent = ({ onClose, isMobile }) => {
 
   const handleLogout = () => {
     alert("Admin logging out...");
-    sessionStorage.removeItem("token");
+    sessionStorage.clear();
     navigate("/login");
   };
 
