@@ -99,7 +99,27 @@ app.post("/api/gemini", async (req, res) => {
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
-  message: 'Too many login attempts, try again later'
+  message: { message: 'Too many login attempts, try again in 15 minutes' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const signupLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 3,
+  message: { message: 'Too many signup attempts, try again later' },
+});
+
+const otpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { message: 'Too many OTP requests, try again later' },
+});
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: { message: 'Too many requests, please slow down' },
 });
 
 app.post("/api/login", loginLimiter, async (req, res) => {
@@ -387,7 +407,7 @@ app.post("/api/verifyToken", (req, res) => {
 // ============================================================================
 // SIGNUP ENDPOINT
 // ============================================================================
-app.post("/api/signup", async (req, res) => {
+app.post("/api/signup", signupLimiter, async (req, res) => {
   const { firstname, lastname, birthday, gender, username, email, phone, password } = req.body;
 
   const normalizedEmail = email.toLowerCase().trim();
