@@ -37,29 +37,32 @@ app.use(helmet({
 // API Key
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
+app.use(cors()); 
 // Middleware configuration
 // CORS with specific origins
-const allowedOrigins = [
-  'https://tara-trabaho-secure-ai-powered-assi.vercel.app',
-  'http://localhost:3000',
-  'http://localhost:5173',
-  'https://taratrabaho-secure-ai-powered-assistant-3913.onrender.com',
-  'https://taratrabaho-secure-ai-powered-assistant-3913.onrender.com/api'
-];
+// const allowedOrigins = [
+//   'https://tara-trabaho-secure-ai-powered-assi.vercel.app',
+//   'http://localhost:3000',
+//   'http://localhost:5173',
+//   'https://taratrabaho-secure-ai-powered-assistant-3913.onrender.com',
+//   'https://taratrabaho-secure-ai-powered-assistant-3913.onrender.com/api',
+//   'https://accounts.google.com',
+//   'https://oauth2.googleapis.com'
+// ];
 
-app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+// app.use(cors({
+//   origin: function (origin, callback) {
+//     if (!origin) return callback(null, true);
+//     if (allowedOrigins.indexOf(origin) !== -1) {
+//       callback(null, true);
+//     } else {
+//       callback(new Error('Not allowed by CORS'));
+//     }
+//   },
+//   credentials: true,
+//   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+//   allowedHeaders: ['Content-Type', 'Authorization']
+// }));
 
 // Force HTTPS in production
 app.use((req, res, next) => {
