@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Box,
   Container,
@@ -31,11 +31,15 @@ import {
   useMediaQuery,
   useTheme,
   IconButton,
+  Tooltip,
 } from "@mui/material";
 import {
   Search as SearchIcon,
   FilterList as FilterListIcon,
-  Delete as DeleteIcon, 
+  Delete as DeleteIcon,
+  Refresh as RefreshIcon,
+  Pause as PauseIcon,
+  PlayArrow as PlayArrowIcon,
 } from "@mui/icons-material";
 import { API_BASE } from "./config/api";
 
@@ -61,36 +65,65 @@ const ManageUser = () => {
     message: "",
     severity: "success",
   });
-
   const [deleteDialog, setDeleteDialog] = useState({
     open: false,
     userId: null,
     username: null,
   });
 
-  useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        setLoading(true);
-        const response = await fetch(`${API_BASE}/api/users`);
-        if (!response.ok) {
-          throw new Error("Failed to fetch users");
-        }
-        const data = await response.json();
+  // Real-time polling states
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState(new Date());
+  const intervalRef = useRef(null);
 
-        setUsers(data);
-        setFilteredUsers(data);
-      } catch (err) {
-        console.error("Error fetching users:", err);
-        setError("Failed to load users. Please try again later.");
-      } finally {
-        setLoading(false);
+  // Fetch users function
+  const fetchUsers = useCallback(async (showLoader = false) => {
+    try {
+      if (showLoader) setLoading(true);
+      
+      const response = await fetch(`${API_BASE}/api/users`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch users");
       }
-    };
+      const data = await response.json();
 
-    fetchUsers();
+      setUsers(data);
+      setFilteredUsers(data);
+      setLastUpdated(new Date());
+      setError("");
+    } catch (err) {
+      console.error("Error fetching users:", err);
+      setError("Failed to load users. Please try again later.");
+    } finally {
+      if (showLoader) setLoading(false);
+    }
   }, []);
 
+  // Initial fetch
+  useEffect(() => {
+    fetchUsers(true);
+  }, [fetchUsers]);
+
+  // Auto-refresh polling (every 5 seconds)
+  useEffect(() => {
+    if (autoRefresh) {
+      intervalRef.current = setInterval(() => {
+        fetchUsers(false); // Don't show loader on auto-refresh
+      }, 5000); // Poll every 5 seconds
+    } else {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    }
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [autoRefresh, fetchUsers]);
+
+  // Filter users
   useEffect(() => {
     let filtered = users;
 
@@ -121,28 +154,32 @@ const ManageUser = () => {
     setNotification({ ...notification, open: false });
   };
 
-  const handleStatusChange = (userId, newStatus) => {
+  const handleStatusChange = async (userId, newStatus) => {
+    // Optimistic update
     setUsers((prevUsers) =>
       prevUsers.map((user) =>
         user.user_id === userId ? { ...user, status: newStatus } : user
       )
     );
 
-    fetch(`${API_BASE}/api/users/${userId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: newStatus }),
-    })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error("Failed to update user");
-        }
-        showNotification("User status updated successfully");
-      })
-      .catch((err) => {
-        console.error("Error updating user:", err);
-        showNotification("Failed to update user status", "error");
+    try {
+      const response = await fetch(`${API_BASE}/api/users/${userId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
       });
+
+      if (!response.ok) throw new Error("Failed to update user");
+      
+      showNotification("User status updated successfully");
+      // Fetch fresh data to ensure sync
+      await fetchUsers(false);
+    } catch (err) {
+      console.error("Error updating user:", err);
+      showNotification("Failed to update user status", "error");
+      // Revert optimistic update
+      await fetchUsers(false);
+    }
   };
 
   const handleRoleChange = (userId, newRole) => {
@@ -153,27 +190,31 @@ const ManageUser = () => {
     }
   };
 
-  const proceedWithRoleChange = (userId, newRole) => {
-    fetch(`${API_BASE}/api/users/${userId}/role`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role: newRole }),
-    })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error("Failed to update user role");
-        }
-        setUsers((prevUsers) =>
-          prevUsers.map((user) =>
-            user.user_id === userId ? { ...user, role: newRole } : user
-          )
-        );
-        showNotification(`User role updated to ${newRole}`);
-      })
-      .catch((err) => {
-        console.error("Error updating user role:", err);
-        showNotification("Failed to update user role", "error");
+  const proceedWithRoleChange = async (userId, newRole) => {
+    try {
+      const response = await fetch(`${API_BASE}/api/users/${userId}/role`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: newRole }),
       });
+
+      if (!response.ok) throw new Error("Failed to update user role");
+
+      // Optimistic update
+      setUsers((prevUsers) =>
+        prevUsers.map((user) =>
+          user.user_id === userId ? { ...user, role: newRole } : user
+        )
+      );
+      
+      showNotification(`User role updated to ${newRole}`);
+      // Fetch fresh data
+      await fetchUsers(false);
+    } catch (err) {
+      console.error("Error updating user role:", err);
+      showNotification("Failed to update user role", "error");
+      await fetchUsers(false);
+    }
   };
 
   const handleConfirmRoleChange = () => {
@@ -209,6 +250,54 @@ const ManageUser = () => {
     return role === "admin" ? "secondary" : "primary";
   };
 
+  const handleDeleteUser = (userId, username) => {
+    setDeleteDialog({ open: true, userId, username });
+  };
+
+  const handleConfirmDelete = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/users/${deleteDialog.userId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) throw new Error("Failed to delete user");
+
+      showNotification("User deleted successfully");
+      setDeleteDialog({ open: false, userId: null, username: null });
+      // Fetch fresh data
+      await fetchUsers(false);
+    } catch (err) {
+      console.error("Error deleting user:", err);
+      showNotification("Failed to delete user", "error");
+      setDeleteDialog({ open: false, userId: null, username: null });
+    }
+  };
+
+  const handleCancelDelete = () => {
+    setDeleteDialog({ open: false, userId: null, username: null });
+  };
+
+  const toggleAutoRefresh = () => {
+    setAutoRefresh(!autoRefresh);
+    showNotification(
+      autoRefresh ? "Auto-refresh paused" : "Auto-refresh enabled",
+      "info"
+    );
+  };
+
+  const handleManualRefresh = () => {
+    fetchUsers(false);
+    showNotification("Users refreshed", "info");
+  };
+
+  const formatLastUpdated = () => {
+    const now = new Date();
+    const seconds = Math.floor((now - lastUpdated) / 1000);
+    if (seconds < 60) return `${seconds}s ago`;
+    const minutes = Math.floor(seconds / 60);
+    return `${minutes}m ago`;
+  };
+
   if (loading) {
     return (
       <Container maxWidth="xl" sx={{ py: 4 }}>
@@ -227,40 +316,36 @@ const ManageUser = () => {
     );
   }
 
-  const handleDeleteUser = (userId, username) => {
-    setDeleteDialog({ open: true, userId, username });
-  };
-
-  const handleConfirmDelete = () => {
-    fetch(`${API_BASE}/api/users/${deleteDialog.userId}`, {
-      method: "DELETE",
-    })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error("Failed to delete user");
-        }
-        setUsers((prevUsers) =>
-          prevUsers.filter((user) => user.user_id !== deleteDialog.userId)
-        );
-        showNotification("User deleted successfully");
-        setDeleteDialog({ open: false, userId: null, username: null });
-      })
-      .catch((err) => {
-        console.error("Error deleting user:", err);
-        showNotification("Failed to delete user", "error");
-        setDeleteDialog({ open: false, userId: null, username: null });
-      });
-  };
-
-  const handleCancelDelete = () => {
-    setDeleteDialog({ open: false, userId: null, username: null });
-  };
-
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
-      <Typography variant="h4" fontWeight="bold" color="text.primary" mb={3}>
-        Manage Users
-      </Typography>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+        <Typography variant="h4" fontWeight="bold" color="text.primary">
+          Manage Users
+        </Typography>
+        
+        {/* Real-time controls */}
+        <Box display="flex" gap={1} alignItems="center">
+          <Tooltip title={autoRefresh ? "Pause auto-refresh" : "Resume auto-refresh"}>
+            <IconButton
+              onClick={toggleAutoRefresh}
+              color={autoRefresh ? "primary" : "default"}
+              size="small"
+            >
+              {autoRefresh ? <PauseIcon /> : <PlayArrowIcon />}
+            </IconButton>
+          </Tooltip>
+          
+          <Tooltip title="Refresh now">
+            <IconButton onClick={handleManualRefresh} size="small">
+              <RefreshIcon />
+            </IconButton>
+          </Tooltip>
+          
+          <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+            Updated {formatLastUpdated()}
+          </Typography>
+        </Box>
+      </Box>
 
       <Snackbar
         open={notification.open}
@@ -597,6 +682,7 @@ const ManageUser = () => {
           </Button>
         </DialogActions>
       </Dialog>
+      
       <Dialog
         open={deleteDialog.open}
         onClose={handleCancelDelete}
