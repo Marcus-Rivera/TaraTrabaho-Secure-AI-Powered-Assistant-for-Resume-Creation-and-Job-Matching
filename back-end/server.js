@@ -408,7 +408,7 @@ app.post("/api/send-otp", async (req, res) => {
     };
 
     await sgMail.send(msg);
-    console.log('✅ OTP resent to:', normalizedEmail);
+    console.log('✅ OTP resent');
 
     res.json({
       success: true,
@@ -438,24 +438,54 @@ app.post("/api/verifyToken", (req, res) => {
 });
 
 // ============================================================================
+// CHECK USERNAME AVAILABILITY
+// ============================================================================
+app.post("/api/check-username", async (req, res) => {
+  const { username } = req.body;
+
+  if (!username) {
+    return res.status(400).json({ available: false, message: "Username is required" });
+  }
+
+  try {
+    const result = await db.execute({
+      sql: "SELECT user_id FROM user WHERE LOWER(username) = LOWER(?)",
+      args: [username.trim()]
+    });
+
+    if (result.rows.length > 0) {
+      return res.json({ available: false, message: "Username already taken" });
+    }
+
+    res.json({ available: true, message: "Username available" });
+  } catch (err) {
+    console.error("Error checking username:", err);
+    return res.status(500).json({ available: false, message: "Database error" });
+  }
+});
+
+
+// ============================================================================
 // SIGNUP ENDPOINT
 // ============================================================================
 app.post("/api/signup", signupLimiter, async (req, res) => {
   const { firstname, lastname, birthday, gender, username, email, phone, password } = req.body;
 
   const normalizedEmail = email.toLowerCase().trim();
+  const normalizedUsername = username.trim();
 
-  if (!email || !password) {
-    return res.status(400).json({ status: "error", message: "Email and password are required" });
+  if (!email || !password || !username) {
+    return res.status(400).json({ status: "error", message: "Email, username, and password are required" });
   }
 
   try {
-    const result = await db.execute({
+    // Check if email exists
+    const emailResult = await db.execute({
       sql: "SELECT * FROM user WHERE LOWER(email) = LOWER(?)",
       args: [email]
     });
 
-    const existingUser = result.rows[0];
+    const existingUser = emailResult.rows[0];
 
     if (existingUser) {
       if (existingUser.google_id && (!existingUser.password_hash || existingUser.password_hash === '')) {
@@ -468,6 +498,19 @@ app.post("/api/signup", signupLimiter, async (req, res) => {
       return res.status(400).json({ status: "error", message: "Email already exists" });
     }
 
+    // Check if username exists
+    const usernameResult = await db.execute({
+      sql: "SELECT user_id FROM user WHERE LOWER(username) = LOWER(?)",
+      args: [normalizedUsername]
+    });
+
+    if (usernameResult.rows.length > 0) {
+      return res.status(400).json({ 
+        status: "error", 
+        message: "Username already taken. Please choose a different username." 
+      });
+    }
+
     const password_hash = await bcrypt.hash(password, 10);
     const role = "job_seeker";
 
@@ -476,7 +519,7 @@ app.post("/api/signup", signupLimiter, async (req, res) => {
       lastname,
       birthday,
       gender,
-      username,
+      username: normalizedUsername,
       email: normalizedEmail,
       phone,
       password_hash,
@@ -515,7 +558,7 @@ app.post("/api/signup", signupLimiter, async (req, res) => {
     };
 
     await sgMail.send(msg);
-    console.log('✅ OTP email sent to:', normalizedEmail);
+    console.log('✅ OTP email sent');
 
     res.json({
       status: "pending",
@@ -2101,7 +2144,7 @@ app.post("/api/forget-password", async (req, res) => {
     };
 
     await sgMail.send(msg);
-    console.log('✅ Password reset email sent to:', normalizedEmail);
+    console.log('✅ Password reset email sent to:');
 
     res.json({ 
       success: true, 

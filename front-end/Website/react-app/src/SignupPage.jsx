@@ -89,6 +89,37 @@ const SignupPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [usernameChecking, setUsernameChecking] = useState(false);
+  const [usernameAvailable, setUsernameAvailable] = useState(null);
+
+  const checkUsernameAvailability = async (username) => {
+    if (!username.trim() || username.trim().length < 3) {
+      setUsernameAvailable(null);
+      return;
+    }
+
+    setUsernameChecking(true);
+    
+    try {
+      const response = await fetch(`${API_BASE}/api/check-username`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: username.trim() }),
+      });
+
+      const result = await response.json();
+      setUsernameAvailable(result.available);
+      
+      if (!result.available) {
+        setErrors((prev) => ({ ...prev, username: "Username already taken" }));
+      }
+    } catch (error) {
+      console.error("Error checking username:", error);
+    } finally {
+      setUsernameChecking(false);
+    }
+  };
+
 
   // Helper function to get max date (16 years ago from today)
   const getMaxDate = () => {
@@ -106,6 +137,17 @@ const SignupPage = () => {
     
     if (errors[name]) {
       setErrors((prev) => ({ ...prev, [name]: "" }));
+    }
+
+    // Check username availability when user types
+    if (name === "username" && value.trim().length >= 3) {
+      // Debounce the check
+      clearTimeout(window.usernameCheckTimeout);
+      window.usernameCheckTimeout = setTimeout(() => {
+        checkUsernameAvailability(value);
+      }, 500);
+    } else if (name === "username") {
+      setUsernameAvailable(null);
     }
   };
 
@@ -137,6 +179,8 @@ const SignupPage = () => {
         break;
       case "username":
         if (!form.username.trim()) error = "Username is required";
+        else if (form.username.trim().length < 3) error = "Username must be at least 3 characters";
+        else if (usernameAvailable === false) error = "Username already taken";
         break;
       case "password":
         if (!form.password) error = "Password is required";
@@ -275,17 +319,22 @@ const SignupPage = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Firstname {touched.firstname && errors.firstname && <span className="text-red-500 text-xs">* {errors.firstname}</span>}
+                  Username {touched.username && errors.username && <span className="text-red-500 text-xs">* {errors.username}</span>}
+                  {usernameChecking && <span className="text-blue-500 text-xs ml-2">Checking...</span>}
+                  {usernameAvailable === true && !errors.username && form.username.trim().length >= 3 && (
+                    <span className="text-green-500 text-xs ml-2">✓ Available</span>
+                  )}
                 </label>
                 <input
                   type="text"
-                  name="firstname"
-                  value={form.firstname}
+                  name="username"
+                  value={form.username}
                   onChange={handleChange}
-                  onBlur={() => handleBlur("firstname")}
-                  placeholder="Firstname"
-                  className={getInputClassName("firstname", "w-full rounded-md p-2 bg-[#BAE8E8] focus:outline-none focus:ring-2 focus:ring-[#272343]")}
+                  onBlur={() => handleBlur("username")}
+                  placeholder="Username (min. 3 characters)"
+                  className={getInputClassName("username", "w-full rounded-md p-2 bg-[#BAE8E8] focus:outline-none focus:ring-2 focus:ring-[#272343]")}
                   disabled={isLoading}
+                  minLength={3}
                 />
               </div>
               <div>
