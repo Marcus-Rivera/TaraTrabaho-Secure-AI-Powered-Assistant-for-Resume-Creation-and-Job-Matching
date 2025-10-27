@@ -319,22 +319,17 @@ const SignupPage = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Username {touched.username && errors.username && <span className="text-red-500 text-xs">* {errors.username}</span>}
-                  {usernameChecking && <span className="text-blue-500 text-xs ml-2">Checking...</span>}
-                  {usernameAvailable === true && !errors.username && form.username.trim().length >= 3 && (
-                    <span className="text-green-500 text-xs ml-2">✓ Available</span>
-                  )}
+                  Firstname {touched.firstname && errors.firstname && <span className="text-red-500 text-xs">* {errors.firstname}</span>}
                 </label>
                 <input
                   type="text"
-                  name="username"
-                  value={form.username}
+                  name="firstname"
+                  value={form.firstname}
                   onChange={handleChange}
-                  onBlur={() => handleBlur("username")}
-                  placeholder="Username (min. 3 characters)"
-                  className={getInputClassName("username", "w-full rounded-md p-2 bg-[#BAE8E8] focus:outline-none focus:ring-2 focus:ring-[#272343]")}
+                  onBlur={() => handleBlur("firstname")}
+                  placeholder="Firstname"
+                  className={getInputClassName("firstname", "w-full rounded-md p-2 bg-[#BAE8E8] focus:outline-none focus:ring-2 focus:ring-[#272343]")}
                   disabled={isLoading}
-                  minLength={3}
                 />
               </div>
               <div>
@@ -392,6 +387,10 @@ const SignupPage = () => {
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">
                   Username {touched.username && errors.username && <span className="text-red-500 text-xs">* {errors.username}</span>}
+                  {usernameChecking && <span className="text-blue-500 text-xs ml-2">Checking...</span>}
+                  {usernameAvailable === true && !errors.username && form.username.trim().length >= 3 && (
+                    <span className="text-green-500 text-xs ml-2">✓ Available</span>
+                  )}
                 </label>
                 <input
                   type="text"
@@ -399,9 +398,10 @@ const SignupPage = () => {
                   value={form.username}
                   onChange={handleChange}
                   onBlur={() => handleBlur("username")}
-                  placeholder="Username"
+                  placeholder="Username (min. 3 characters)"
                   className={getInputClassName("username", "w-full rounded-md p-2 bg-[#BAE8E8] focus:outline-none focus:ring-2 focus:ring-[#272343]")}
                   disabled={isLoading}
+                  minLength={3}
                 />
               </div>
               <div>
