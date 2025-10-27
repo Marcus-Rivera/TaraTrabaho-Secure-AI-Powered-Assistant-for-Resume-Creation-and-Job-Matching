@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   LineChart, Line, BarChart, Bar, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell
 } from 'recharts';
-import { API_BASE } from "./config/api";
+
+// IMPORTANT: Import your API_BASE from your config
+// import { API_BASE } from "./config/api";
 
 const Reports = () => {
   const [loading, setLoading] = useState(true);
@@ -11,7 +13,7 @@ const Reports = () => {
   const [resumesData, setResumesData] = useState([]);
   const [applicationsData, setApplicationsData] = useState([]);
   const [matchesData, setMatchesData] = useState([]);
-  const [dateRange, setDateRange] = useState('7'); // 7, 14, 30 days
+  const [dateRange, setDateRange] = useState('7');
   const [summary, setSummary] = useState({
     totalUsers: 0,
     totalResumes: 0,
@@ -20,16 +22,20 @@ const Reports = () => {
     activeUsersToday: 0,
     applicationsToday: 0
   });
+  
+  // Real-time update controls
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [refreshInterval, setRefreshInterval] = useState(30); // seconds
+  const [lastUpdate, setLastUpdate] = useState(new Date());
+  const intervalRef = useRef(null);
 
-  useEffect(() => {
-    fetchAnalytics();
-  }, []);
-
-  const fetchAnalytics = async () => {
+  const fetchAnalytics = async (silent = false) => {
     try {
-      setLoading(true);
-      const BASE_URL = '/api';
+      if (!silent) setLoading(true);
 
+      // REPLACE WITH YOUR ACTUAL API ENDPOINTS:
+      const BASE_URL = '/api';
+      
       const [dailyUsers, resumes, applications, matches, summaryData] = await Promise.all([
         fetch(`${API_BASE}${BASE_URL}/analytics/daily-users`).then(r => r.json()),
         fetch(`${API_BASE}${BASE_URL}/analytics/resumes`).then(r => r.json()),
@@ -43,6 +49,7 @@ const Reports = () => {
       setApplicationsData(applications.data || []);
       setMatchesData(matches.data || []);
       setSummary(summaryData.summary || {});
+      setLastUpdate(new Date());
       
     } catch (error) {
       console.error('Error fetching analytics:', error);
@@ -51,9 +58,33 @@ const Reports = () => {
     }
   };
 
+  // Initial load
+  useEffect(() => {
+    fetchAnalytics();
+  }, []);
+
+  // Auto-refresh setup
+  useEffect(() => {
+    if (autoRefresh) {
+      intervalRef.current = setInterval(() => {
+        fetchAnalytics(true); // Silent refresh
+      }, refreshInterval * 1000);
+    }
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [autoRefresh, refreshInterval]);
+
   const formatDate = (dateStr) => {
     const date = new Date(dateStr);
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  const formatTime = (date) => {
+    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   };
 
   const getFilteredData = (data) => {
@@ -90,7 +121,6 @@ const Reports = () => {
     </div>
   );
 
-  // Calculate pie chart data for user engagement
   const engagementData = [
     { name: 'Resumes', value: summary.totalResumes, color: '#3B82F6' },
     { name: 'Applications', value: summary.totalApplications, color: '#10B981' },
@@ -115,41 +145,94 @@ const Reports = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        {/* Header Section */}
+        {/* Header Section with Real-time Controls */}
         <div className="mb-6 sm:mb-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 mb-1">
-                Analytics Dashboard
-              </h1>
-              <p className="text-sm sm:text-base text-gray-600">
-                Real-time platform performance metrics
-              </p>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-3">
+                  <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900">
+                    Analytics Dashboard
+                  </h1>
+                  {autoRefresh && (
+                    <div className="flex items-center gap-2 px-3 py-1 bg-green-100 rounded-full">
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                      <span className="text-xs font-semibold text-green-700">LIVE</span>
+                    </div>
+                  )}
+                </div>
+                <p className="text-sm sm:text-base text-gray-600 mt-1">
+                  Real-time platform performance metrics
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Last updated: {formatTime(lastUpdate)}
+                </p>
+              </div>
+              
+              <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-200 p-1 shadow-sm">
+                {['7', '14', '30'].map((days) => (
+                  <button
+                    key={days}
+                    onClick={() => setDateRange(days)}
+                    className={`px-3 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-all ${
+                      dateRange === days
+                        ? 'bg-gray-900 text-white shadow-md'
+                        : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    {days} Days
+                  </button>
+                ))}
+              </div>
             </div>
-            
-            {/* Date Range Filter */}
-            <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-200 p-1 shadow-sm">
-              {['7', '14', '30'].map((days) => (
+
+            {/* Real-time Controls Panel */}
+            <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={autoRefresh}
+                      onChange={(e) => setAutoRefresh(e.target.checked)}
+                      className="w-4 h-4 text-gray-900 rounded focus:ring-2 focus:ring-gray-900"
+                    />
+                    <span className="text-sm font-medium text-gray-700">Auto-refresh</span>
+                  </label>
+                  
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm text-gray-600">Interval:</label>
+                    <select
+                      value={refreshInterval}
+                      onChange={(e) => setRefreshInterval(Number(e.target.value))}
+                      disabled={!autoRefresh}
+                      className="px-3 py-1 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-gray-900 disabled:bg-gray-100 disabled:text-gray-400"
+                    >
+                      <option value={10}>10s</option>
+                      <option value={30}>30s</option>
+                      <option value={60}>1m</option>
+                      <option value={300}>5m</option>
+                    </select>
+                  </div>
+                </div>
+
                 <button
-                  key={days}
-                  onClick={() => setDateRange(days)}
-                  className={`px-3 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-all ${
-                    dateRange === days
-                      ? 'bg-gray-900 text-white shadow-md'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
+                  onClick={() => fetchAnalytics()}
+                  className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-all flex items-center gap-2 text-sm font-medium shadow-sm"
                 >
-                  {days} Days
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Refresh Now
                 </button>
-              ))}
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Summary Cards - Now fully responsive */}
+        {/* Summary Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
-          {/* Total Users Card */}
-          <div className="bg-gradient-to-br from-blue-50 to-white rounded-xl border border-blue-100 p-5 sm:p-6 shadow-sm hover:shadow-md transition-shadow">
+          <div className="bg-gradient-to-br from-blue-50 to-white rounded-xl border border-blue-100 p-5 sm:p-6 shadow-sm hover:shadow-md transition-all">
             <div className="flex items-start justify-between mb-4">
               <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
                 <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -169,8 +252,7 @@ const Reports = () => {
             </p>
           </div>
 
-          {/* Resumes Card */}
-          <div className="bg-gradient-to-br from-purple-50 to-white rounded-xl border border-purple-100 p-5 sm:p-6 shadow-sm hover:shadow-md transition-shadow">
+          <div className="bg-gradient-to-br from-purple-50 to-white rounded-xl border border-purple-100 p-5 sm:p-6 shadow-sm hover:shadow-md transition-all">
             <div className="flex items-start justify-between mb-4">
               <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
                 <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -188,8 +270,7 @@ const Reports = () => {
             <p className="text-xs text-gray-500 mt-1">AI-powered resumes</p>
           </div>
 
-          {/* Applications Card */}
-          <div className="bg-gradient-to-br from-green-50 to-white rounded-xl border border-green-100 p-5 sm:p-6 shadow-sm hover:shadow-md transition-shadow sm:col-span-2 lg:col-span-1">
+          <div className="bg-gradient-to-br from-green-50 to-white rounded-xl border border-green-100 p-5 sm:p-6 shadow-sm hover:shadow-md transition-all sm:col-span-2 lg:col-span-1">
             <div className="flex items-start justify-between mb-4">
               <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
                 <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -210,9 +291,8 @@ const Reports = () => {
           </div>
         </div>
 
-        {/* Charts Grid - Fully Responsive */}
+        {/* Charts Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-          {/* Daily Users Chart */}
           <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6 shadow-sm hover:shadow-md transition-shadow">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-2">
               <h3 className="text-base sm:text-lg font-semibold text-gray-900">Daily Active Users</h3>
@@ -250,7 +330,6 @@ const Reports = () => {
             )}
           </div>
 
-          {/* Resumes Chart */}
           <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6 shadow-sm hover:shadow-md transition-shadow">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-2">
               <h3 className="text-base sm:text-lg font-semibold text-gray-900">Resumes Generated</h3>
@@ -276,7 +355,6 @@ const Reports = () => {
             )}
           </div>
 
-          {/* Applications Chart */}
           <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6 shadow-sm hover:shadow-md transition-shadow">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-2">
               <h3 className="text-base sm:text-lg font-semibold text-gray-900">Job Applications</h3>
@@ -309,7 +387,6 @@ const Reports = () => {
             )}
           </div>
 
-          {/* AI Matches Chart */}
           <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6 shadow-sm hover:shadow-md transition-shadow">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-2">
               <h3 className="text-base sm:text-lg font-semibold text-gray-900">AI Job Matches</h3>
@@ -336,11 +413,10 @@ const Reports = () => {
           </div>
         </div>
 
-        {/* Engagement Overview - NEW */}
+        {/* Engagement Overview */}
         <div className="mt-6 bg-white rounded-xl border border-gray-200 p-4 sm:p-6 shadow-sm hover:shadow-md transition-shadow">
           <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-4">Platform Engagement Overview</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Pie Chart */}
             <div className="flex items-center justify-center">
               <ResponsiveContainer width="100%" height={200}>
                 <PieChart>
@@ -362,7 +438,6 @@ const Reports = () => {
               </ResponsiveContainer>
             </div>
 
-            {/* Legend & Stats */}
             <div className="flex flex-col justify-center space-y-3">
               {engagementData.map((item) => (
                 <div key={item.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
@@ -377,7 +452,7 @@ const Reports = () => {
           </div>
         </div>
 
-        {/* Quick Stats Bar - NEW */}
+        {/* Quick Stats Bar */}
         <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white rounded-lg border border-gray-200 p-4 text-center">
             <p className="text-2xl font-bold text-gray-900">{summary.totalJobs}</p>
@@ -401,19 +476,6 @@ const Reports = () => {
             </p>
             <p className="text-xs text-gray-600 mt-1">Application Rate</p>
           </div>
-        </div>
-
-        {/* Refresh Button */}
-        <div className="mt-8 flex justify-center">
-          <button
-            onClick={fetchAnalytics}
-            className="px-6 py-3 bg-gradient-to-r from-gray-900 to-gray-700 text-white rounded-xl hover:from-gray-800 hover:to-gray-600 transition-all flex items-center gap-2 shadow-lg hover:shadow-xl font-medium"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            Refresh Data
-          </button>
         </div>
       </div>
     </div>
