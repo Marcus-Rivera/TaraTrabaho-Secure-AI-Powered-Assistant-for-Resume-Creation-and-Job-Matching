@@ -426,7 +426,7 @@ const JobListingsSection = () => {
             <span className="text-sm">{job.type}</span>
           </div>
           <div className="flex items-center gap-2 text-gray-600">
-            <AttachMoneyIcon fontSize="small" sx={{ color: '#FBDA23' }} />
+            <span className="font-bold text-lg" style={{ color: '#FBDA23' }}>₱</span>
             <span className="text-sm">{job.salary}</span>
           </div>
           <div className="flex items-center gap-2 text-gray-600">
@@ -895,7 +895,7 @@ const JobListingsSection = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <AttachMoneyIcon sx={{ color: '#FBDA23' }} />
+                  <span className="font-bold text-2xl" style={{ color: '#FBDA23' }}>₱</span>
                   <div>
                     <Typography variant="caption" color="text.secondary">Salary Range</Typography>
                     <Typography variant="body2" fontWeight="bold">{selectedJob.salary}</Typography>
