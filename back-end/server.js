@@ -413,7 +413,6 @@ app.post("/api/send-otp", async (req, res) => {
     };
 
     await sgMail.send(msg);
-    console.log('✅ OTP resent');
 
     res.json({
       success: true,
@@ -563,7 +562,6 @@ app.post("/api/signup", signupLimiter, async (req, res) => {
     };
 
     await sgMail.send(msg);
-    console.log('✅ OTP email sent');
 
     res.json({
       status: "pending",
@@ -2149,7 +2147,6 @@ app.post("/api/forget-password", async (req, res) => {
     };
 
     await sgMail.send(msg);
-    console.log('✅ Password reset email sent to:');
 
     res.json({ 
       success: true, 
@@ -2244,7 +2241,7 @@ app.post("/api/reset-password", async (req, res) => {
 
     delete resetTokenStore[token];
 
-    console.log('✅ Password reset successful for:', tokenData.email);
+    //console.log('✅ Password reset successful for:', tokenData.email);
 
     // Send confirmation email
     const msg = {
