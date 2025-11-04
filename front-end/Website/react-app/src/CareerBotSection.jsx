@@ -17,12 +17,15 @@ const CareerBotSection = () => {
   const [showPreview, setShowPreview] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [showEditMenu, setShowEditMenu] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
   //  For Saving of PDF to account
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [saveFileName, setSaveFileName] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
   // Chat History
   const [lastSavedChatId, setLastSavedChatId] = useState(null);
@@ -36,6 +39,8 @@ const CareerBotSection = () => {
 
   const [showSuccessAlert, setShowSuccessAlert] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
+
+
 
   const [resumeData, setResumeData] = useState({
     personalInfo: {
@@ -313,258 +318,390 @@ const CareerBotSection = () => {
     const updatedData = { ...resumeData };
 
     switch (currentStep) {
-      case "name":
-        if (!validateName(userInput)) {
-          botResponse = "Please enter a valid name (at least 2 characters, letters only). What's your full name?";
-          isValid = false;
-        } else {
-          updatedData.personalInfo.name = userInput;
-          botResponse = `Nice to meet you, ${userInput}! 😊 What's your email address?`;
-          setCurrentStep("email");
-        }
-        break;
-
-      case "email":
-        if (!validateEmail(userInput)) {
-          botResponse = "That doesn't look like a valid email. Please enter a valid email address (e.g., juan@gmail.com)";
-          isValid = false;
-        } else {
-          updatedData.personalInfo.email = userInput;
-          botResponse = "Perfect! What's your mobile number? (Format: 09XX-XXX-XXXX)";
-          setCurrentStep("phone");
-        }
-        break;
-
-      case "phone":
-        if (!validatePhone(userInput)) {
-          botResponse = "Please enter a valid Philippine mobile number (e.g., 0917-123-4567 or +639171234567)";
-          isValid = false;
-        } else {
-          updatedData.personalInfo.phone = userInput;
-          botResponse = "Salamat! Where are you located? (City, Province - e.g., Quezon City, Metro Manila)";
-          setCurrentStep("location");
-        }
-        break;
-
-      case "location":
-        if (userInput.length < 3) {
-          botResponse = "Please enter your complete location (City and Province/Region)";
-          isValid = false;
-        } else {
-          updatedData.personalInfo.location = userInput;
-          botResponse = "Great! 🌐 Do you have a LinkedIn profile? (Paste the URL or type 'skip')";
-          setCurrentStep("linkedin");
-        }
-        break;
-
-      case "linkedin":
-        if (userInput.toLowerCase() === 'skip' || userInput.toLowerCase() === 'none') {
-          updatedData.personalInfo.linkedin = "";
-          botResponse = "No problem! Do you have a portfolio website or GitHub profile? (Paste URL or type 'skip')";
-          setCurrentStep("portfolio");
-        } else if (!validateURL(userInput)) {
-          botResponse = "Please enter a valid URL (e.g., https://linkedin.com/in/yourname) or type 'skip'";
-          isValid = false;
-        } else {
-          updatedData.personalInfo.linkedin = userInput;
-          botResponse = "Excellent! Do you have a portfolio website or GitHub profile? (Paste URL or type 'skip')";
-          setCurrentStep("portfolio");
-        }
-        break;
-
-      case "portfolio":
-        if (userInput.toLowerCase() === 'skip' || userInput.toLowerCase() === 'none') {
-          updatedData.personalInfo.portfolio = "";
-          botResponse = "Understood! Now, what type of position are you applying for? Write a brief career objective (1-2 sentences).\n\nExample: Seeking a Marketing Coordinator position where I can leverage my digital marketing skills to drive brand growth.";
-          setCurrentStep("objective");
-        } else if (!validateURL(userInput)) {
-          botResponse = "Please enter a valid URL (e.g., https://yourportfolio.com) or type 'skip'";
-          isValid = false;
-        } else {
-          updatedData.personalInfo.portfolio = userInput;
-          botResponse = "Perfect! 🎯 Now, what type of position are you applying for? Write a brief career objective (1-2 sentences).\n\nExample: Seeking a Marketing Coordinator position where I can leverage my digital marketing skills to drive brand growth.";
-          setCurrentStep("objective");
-        }
-        break;
-
-      case "objective":
-        if (userInput.split(" ").length < 8) {
-          botResponse = "Please provide more details about your career objective (at least 8 words).";
-          isValid = false;
-        } else {
-          setMessages((prev) => [...prev, { from: "bot", text: "✨ Refining your career objective with AI..." }]);
-          
-          const enhancedObjective = await callGeminiAPI(
-            userInput, 
-            "Rewrite this career objective to be compelling and professional. Make it concise (1-2 sentences), action-oriented, and tailored for Philippine job applications. Return only the refined objective without explanations."
-          );
-          
-          updatedData.objective = enhancedObjective || userInput;
-          botResponse = enhancedObjective 
-            ? `Great! Here's your refined objective:\n\n"${enhancedObjective}"\n\n💼 Now tell me about yourself professionally. Write 2-3 sentences highlighting your experience, key strengths, and what makes you stand out.`
-            : "Great! 💼 Now tell me about yourself professionally. Write 2-3 sentences highlighting your experience, key strengths, and what makes you stand out.";
-          setCurrentStep("summary");
-        }
-        break;
-
-      case "summary":
-        if (userInput.split(" ").length < 10) {
-          botResponse = "Please provide more details (at least 10 words). Describe your professional background, key achievements, and strengths.";
-          isValid = false;
-        } else {
-          setMessages((prev) => [...prev, { from: "bot", text: "✨ Enhancing your summary with AI..." }]);
-          
-          const enhancedSummary = await callGeminiAPI(
-            userInput, 
-            "Improve and rewrite this professional summary for a resume tailored to job applications in the Philippines. Make it sound confident, achievement-focused, and professional. Include specific strengths and value propositions. Keep it concise (3–4 sentences) and return only one final version without giving multiple options or explanations."
-          );
-          
-          updatedData.summary = enhancedSummary || userInput;
-          botResponse = enhancedSummary 
-            ? `Excellent! Here's your enhanced summary:\n\n"${enhancedSummary}"\n\n👔 Let's add your work experience. Tell me about your most recent job:\n\nFormat: Job Title | Company Name | Start Date - End Date\nExample: Marketing Assistant | SM Supermalls | Jan 2022 - Present`
-            : "Excellent! 👔 Let's add your work experience. Tell me about your most recent job:\n\nFormat: Job Title | Company Name | Start Date - End Date\nExample: Marketing Assistant | SM Supermalls | Jan 2022 - Present";
-          setCurrentStep("experience");
-        }
-        break;
-
-      case "experience":
-        const expParts = userInput.split("|").map((s) => s.trim());
-        if (expParts.length < 3) {
-          botResponse = "Please follow the format: Job Title | Company Name | Duration\nExample: Sales Associate | Jollibee | Jan 2022 - Dec 2023";
-          isValid = false;
-        } else {
-          updatedData.currentExperience = {
-            title: expParts[0],
-            company: expParts[1],
-            duration: expParts[2],
-            duties: [],
-          };
-          botResponse = "Great! Now describe your key responsibilities and achievements in this role (separate each with a semicolon).\n\nExample: Handled customer inquiries and complaints; Increased sales by 20% through upselling techniques; Trained 5 new employees on company procedures";
-          setCurrentStep("experience_duties");
-        }
-        break;
-
-      case "experience_duties":
-        if (userInput.length < 10) {
-          botResponse = "Please provide more details about what you did in this role (at least 10 characters).";
-          isValid = false;
-        } else {
-          if (updatedData.currentExperience) {
-            const duties = userInput.split(";").map((d) => d.trim()).filter((d) => d);
-            updatedData.currentExperience.duties = duties;
-            updatedData.experience.push(updatedData.currentExperience);
-            delete updatedData.currentExperience;
-          }
-          botResponse = "Magaling! Do you want to add another work experience? Type 'yes' or 'no'";
-          setCurrentStep("experience_more");
-        }
-        break;
-
-      case "experience_more":
-        if (userInput.toLowerCase().includes("yes") || userInput.toLowerCase().includes("oo")) {
-          botResponse = "Please enter your next job experience:\n\nFormat: Job Title | Company Name | Start Date - End Date";
-          setCurrentStep("experience");
-        } else {
-          botResponse = "Perfect! Now let's add your education. Please provide:\n\nFormat: Degree/Course | School Name | Graduation Year\nExample: BS Business Administration | University of the Philippines | 2022";
-          setCurrentStep("education");
-        }
-        break;
-
-      case "education":
-        const eduParts = userInput.split("|").map((s) => s.trim());
-        if (eduParts.length < 3) {
-          botResponse = "Please follow the format: Degree/Course | School | Year\nExample: BS Nursing | UST | 2020";
-          isValid = false;
-        } else {
-          updatedData.education.push({
-            degree: eduParts[0],
-            institution: eduParts[1],
-            year: eduParts[2],
-          });
-          botResponse = "Would you like to add another educational background? Type 'yes' or 'no'";
-          setCurrentStep("education_more");
-        }
-        break;
-
-      case "education_more":
-        if (userInput.toLowerCase().includes("yes") || userInput.toLowerCase().includes("oo")) {
-          botResponse = "Enter your next educational background:\n\nFormat: Degree/Course | School | Year";
-          setCurrentStep("education");
-        } else {
-          botResponse = "Great! 🎓 Do you have any professional certifications? (e.g., TESDA, NC II, First Aid, etc.)\n\nFormat: Certification Name | Issuing Organization | Year\nExample: National Certificate II in Housekeeping | TESDA | 2023\n\nOr type 'skip' if none";
-          setCurrentStep("certifications");
-        }
-        break;
-
-      case "certifications":
-        if (userInput.toLowerCase() === 'skip' || userInput.toLowerCase() === 'none') {
-          updatedData.certifications = [];
-          botResponse = "No problem! 🌍 What languages can you speak? (Include proficiency level)\n\nFormat: Language - Proficiency\nExample: English - Fluent, Tagalog - Native, Bisaya - Conversational\n\nSeparate multiple languages with commas.";
-          setCurrentStep("languages");
-        } else {
-          const certParts = userInput.split("|").map((s) => s.trim());
-          if (certParts.length < 2) {
-            botResponse = "Please follow the format: Certification Name | Issuing Organization | Year\nOr type 'skip' if you don't have any certifications";
+        case "name":
+          if (!validateName(userInput)) {
+            botResponse = "Please enter a valid name (at least 2 characters, letters only). What's your full name?";
             isValid = false;
           } else {
-            updatedData.certifications.push({
-              name: certParts[0],
-              issuer: certParts[1],
-              year: certParts[2] || "N/A",
-            });
-            botResponse = "Excellent! Do you want to add another certification? Type 'yes' or 'no'";
-            setCurrentStep("certifications_more");
+            updatedData.personalInfo.name = userInput;
+            
+            if (isEditMode) {
+              botResponse = `✅ Name updated to "${userInput}"! Your resume has been updated.\n\nYou can continue editing or download your resume.`;
+              setCurrentStep("complete");
+              setIsEditMode(false);
+            } else {
+              botResponse = `Nice to meet you, ${userInput}! 😊 What's your email address?`;
+              setCurrentStep("email");
+            }
           }
-        }
-        break;
+          break;
 
-      case "certifications_more":
-        if (userInput.toLowerCase().includes("yes") || userInput.toLowerCase().includes("oo")) {
-          botResponse = "Enter your next certification:\n\nFormat: Certification Name | Issuing Organization | Year";
-          setCurrentStep("certifications");
-        } else {
-          botResponse = "Perfect! 🌍 What languages can you speak? (Include proficiency level)\n\nFormat: Language - Proficiency\nExample: English - Fluent, Tagalog - Native, Bisaya - Conversational\n\nSeparate multiple languages with commas.";
-          setCurrentStep("languages");
-        }
-        break;
+        case "email":
+          if (!validateEmail(userInput)) {
+            botResponse = "That doesn't look like a valid email. Please enter a valid email address (e.g., juan@gmail.com)";
+            isValid = false;
+          } else {
+            updatedData.personalInfo.email = userInput;
+            
+            if (isEditMode) {
+              botResponse = `✅ Email updated to "${userInput}"! Your resume has been updated.`;
+              setCurrentStep("complete");
+              setIsEditMode(false);
+            } else {
+              botResponse = "Perfect! What's your mobile number? (Format: 09XX-XXX-XXXX)";
+              setCurrentStep("phone");
+            }
+          }
+          break;
 
-      case "languages":
-        const languagesList = userInput.split(",").map((s) => s.trim()).filter((s) => s);
-        if (languagesList.length < 1) {
-          botResponse = "Please list at least one language with proficiency level.\nExample: English - Fluent, Tagalog - Native";
-          isValid = false;
-        } else {
-          updatedData.languages = languagesList;
-          botResponse = "Almost done! 🎉 List your key skills separated by commas (at least 3 skills).\n\nExample: Customer Service, MS Office, Social Media Marketing, Time Management, Communication Skills";
-          setCurrentStep("skills");
-        }
-        break;
+        case "phone":
+          if (!validatePhone(userInput)) {
+            botResponse = "Please enter a valid Philippine mobile number (e.g., 0917-123-4567 or +639171234567)";
+            isValid = false;
+          } else {
+            updatedData.personalInfo.phone = userInput;
+            
+            if (isEditMode) {
+              botResponse = `✅ Phone updated to "${userInput}"! Your resume has been updated.`;
+              setCurrentStep("complete");
+              setIsEditMode(false);
+            } else {
+              botResponse = "Salamat! Where are you located? (City, Province - e.g., Quezon City, Metro Manila)";
+              setCurrentStep("location");
+            }
+          }
+          break;
 
-      case "skills":
-        const skillsList = userInput.split(",").map((s) => s.trim()).filter((s) => s);
-        if (skillsList.length < 3) {
-          botResponse = "Please list at least 3 skills separated by commas.";
-          isValid = false;
-        } else {
-          updatedData.skills = skillsList;
-          botResponse = "Congratulations! 🎊 Your resume is complete! Click 'Preview Resume' to see it, or 'Download PDF' to save it. You can also type 'edit' if you want to change anything.";
-          setCurrentStep("complete");
-        }
-        break;
+        case "location":
+          if (userInput.length < 3) {
+            botResponse = "Please enter your complete location (City and Province/Region)";
+            isValid = false;
+          } else {
+            updatedData.personalInfo.location = userInput;
+            
+            if (isEditMode) {
+              botResponse = `✅ Location updated to "${userInput}"! Your resume has been updated.`;
+              setCurrentStep("complete");
+              setIsEditMode(false);
+            } else {
+              botResponse = "Great! 🌐 Do you have a LinkedIn profile? (Paste the URL or type 'skip')";
+              setCurrentStep("linkedin");
+            }
+          }
+          break;
 
-      case "complete":
-        if (userInput.toLowerCase().includes("edit")) {
-          botResponse = "Sure! What section would you like to edit? (personal info, objective, summary, experience, education, certifications, languages, or skills)";
-        } else if (userInput.toLowerCase().includes("new") || userInput.toLowerCase().includes("another")) {
-          setShowNewResumeDialog(true);
-          botResponse = "Would you like to create another resume? This will start fresh with a new conversation.";
-        } else {
-          botResponse = "You can preview your resume, download it as PDF, or save it to your account. Need any changes? Just let me know!\n\nType 'new resume' if you want to create another one.";
-        }
-        break;
+        case "linkedin":
+          if (userInput.toLowerCase() === 'skip' || userInput.toLowerCase() === 'none') {
+            updatedData.personalInfo.linkedin = "";
+            
+            if (isEditMode) {
+              botResponse = "✅ LinkedIn removed from your resume!";
+              setCurrentStep("complete");
+              setIsEditMode(false);
+            } else {
+              botResponse = "No problem! Do you have a portfolio website or GitHub profile? (Paste URL or type 'skip')";
+              setCurrentStep("portfolio");
+            }
+          } else if (!validateURL(userInput)) {
+            botResponse = "Please enter a valid URL (e.g., https://linkedin.com/in/yourname) or type 'skip'";
+            isValid = false;
+          } else {
+            updatedData.personalInfo.linkedin = userInput;
+            
+            if (isEditMode) {
+              botResponse = `✅ LinkedIn updated! Your resume has been updated.`;
+              setCurrentStep("complete");
+              setIsEditMode(false);
+            } else {
+              botResponse = "Excellent! Do you have a portfolio website or GitHub profile? (Paste URL or type 'skip')";
+              setCurrentStep("portfolio");
+            }
+          }
+          break;
 
-      default:
-        botResponse = "Let's continue building your resume!";
+        case "portfolio":
+          if (userInput.toLowerCase() === 'skip' || userInput.toLowerCase() === 'none') {
+            updatedData.personalInfo.portfolio = "";
+            
+            if (isEditMode) {
+              botResponse = "✅ Portfolio removed from your resume!";
+              setCurrentStep("complete");
+              setIsEditMode(false);
+            } else {
+              botResponse = "Understood! Now, what type of position are you applying for? Write a brief career objective (1-2 sentences).\n\nExample: Seeking a Marketing Coordinator position where I can leverage my digital marketing skills to drive brand growth.";
+              setCurrentStep("objective");
+            }
+          } else if (!validateURL(userInput)) {
+            botResponse = "Please enter a valid URL (e.g., https://yourportfolio.com) or type 'skip'";
+            isValid = false;
+          } else {
+            updatedData.personalInfo.portfolio = userInput;
+            
+            if (isEditMode) {
+              botResponse = `✅ Portfolio updated! Your resume has been updated.`;
+              setCurrentStep("complete");
+              setIsEditMode(false);
+            } else {
+              botResponse = "Perfect! 🎯 Now, what type of position are you applying for? Write a brief career objective (1-2 sentences).\n\nExample: Seeking a Marketing Coordinator position where I can leverage my digital marketing skills to drive brand growth.";
+              setCurrentStep("objective");
+            }
+          }
+          break;
+
+        case "objective":
+          if (userInput.split(" ").length < 8) {
+            botResponse = "Please provide more details about your career objective (at least 8 words).";
+            isValid = false;
+          } else {
+            setMessages((prev) => [...prev, { from: "bot", text: "✨ Refining your career objective with AI..." }]);
+            
+            const enhancedObjective = await callGeminiAPI(
+              userInput, 
+              "Rewrite this career objective to be compelling and professional. Make it concise (1-2 sentences), action-oriented, and tailored for Philippine job applications. Return only the refined objective without explanations."
+            );
+            
+            updatedData.objective = enhancedObjective || userInput;
+            
+            if (isEditMode) {
+              botResponse = enhancedObjective 
+                ? `✅ Career objective updated!\n\n"${enhancedObjective}"\n\nYour resume has been updated.`
+                : `✅ Career objective updated! Your resume has been updated.`;
+              setCurrentStep("complete");
+              setIsEditMode(false);
+            } else {
+              botResponse = enhancedObjective 
+                ? `Great! Here's your refined objective:\n\n"${enhancedObjective}"\n\n💼 Now tell me about yourself professionally. Write 2-3 sentences highlighting your experience, key strengths, and what makes you stand out.`
+                : "Great! 💼 Now tell me about yourself professionally. Write 2-3 sentences highlighting your experience, key strengths, and what makes you stand out.";
+              setCurrentStep("summary");
+            }
+          }
+          break;
+
+        case "summary":
+          if (userInput.split(" ").length < 10) {
+            botResponse = "Please provide more details (at least 10 words). Describe your professional background, key achievements, and strengths.";
+            isValid = false;
+          } else {
+            setMessages((prev) => [...prev, { from: "bot", text: "✨ Enhancing your summary with AI..." }]);
+            
+            const enhancedSummary = await callGeminiAPI(
+              userInput, 
+              "Improve and rewrite this professional summary for a resume tailored to job applications in the Philippines. Make it sound confident, achievement-focused, and professional. Include specific strengths and value propositions. Keep it concise (3–4 sentences) and return only one final version without giving multiple options or explanations."
+            );
+            
+            updatedData.summary = enhancedSummary || userInput;
+            
+            if (isEditMode) {
+              botResponse = enhancedSummary 
+                ? `✅ Professional summary updated!\n\n"${enhancedSummary}"\n\nYour resume has been updated.`
+                : `✅ Professional summary updated! Your resume has been updated.`;
+              setCurrentStep("complete");
+              setIsEditMode(false);
+            } else {
+              botResponse = enhancedSummary 
+                ? `Excellent! Here's your enhanced summary:\n\n"${enhancedSummary}"\n\n👔 Let's add your work experience. Tell me about your most recent job:\n\nFormat: Job Title | Company Name | Start Date - End Date\nExample: Marketing Assistant | SM Supermalls | Jan 2022 - Present`
+                : "Excellent! 👔 Let's add your work experience. Tell me about your most recent job:\n\nFormat: Job Title | Company Name | Start Date - End Date\nExample: Marketing Assistant | SM Supermalls | Jan 2022 - Present";
+              setCurrentStep("experience");
+            }
+          }
+          break;
+
+        case "experience":
+          const expParts = userInput.split("|").map((s) => s.trim());
+          if (expParts.length < 3) {
+            botResponse = "Please follow the format: Job Title | Company Name | Duration\nExample: Sales Associate | Jollibee | Jan 2022 - Dec 2023";
+            isValid = false;
+          } else {
+            updatedData.currentExperience = {
+              title: expParts[0],
+              company: expParts[1],
+              duration: expParts[2],
+              duties: [],
+            };
+            
+            if (isEditMode) {
+              botResponse = "Great! Now describe your key responsibilities and achievements in this role (separate each with a semicolon).\n\nExample: Handled customer inquiries and complaints; Increased sales by 20% through upselling techniques; Trained 5 new employees on company procedures";
+              setCurrentStep("experience_duties");
+            } else {
+              botResponse = "Great! Now describe your key responsibilities and achievements in this role (separate each with a semicolon).\n\nExample: Handled customer inquiries and complaints; Increased sales by 20% through upselling techniques; Trained 5 new employees on company procedures";
+              setCurrentStep("experience_duties");
+            }
+          }
+          break;
+
+        case "experience_duties":
+          if (userInput.length < 10) {
+            botResponse = "Please provide more details about what you did in this role (at least 10 characters).";
+            isValid = false;
+          } else {
+            if (updatedData.currentExperience) {
+              const duties = userInput.split(";").map((d) => d.trim()).filter((d) => d);
+              updatedData.currentExperience.duties = duties;
+              updatedData.experience.push(updatedData.currentExperience);
+              delete updatedData.currentExperience;
+            }
+            
+            if (isEditMode) {
+              botResponse = "✅ Work experience updated! Your resume has been updated.\n\nWould you like to add another work experience? Type 'yes' to add more, or type 'done' to finish editing.";
+              setCurrentStep("experience_more");
+            } else {
+              botResponse = "Magaling! Do you want to add another work experience? Type 'yes' or 'no'";
+              setCurrentStep("experience_more");
+            }
+          }
+          break;
+
+        case "experience_more":
+          if (userInput.toLowerCase().includes("yes") || userInput.toLowerCase().includes("oo")) {
+            botResponse = "Please enter your next job experience:\n\nFormat: Job Title | Company Name | Start Date - End Date";
+            setCurrentStep("experience");
+          } else if (isEditMode && (userInput.toLowerCase().includes("done") || userInput.toLowerCase().includes("no") || userInput.toLowerCase().includes("hindi"))) {
+            botResponse = "✅ Work experience section updated! Your resume has been updated.";
+            setCurrentStep("complete");
+            setIsEditMode(false);
+          } else {
+            botResponse = "Perfect! Now let's add your education. Please provide:\n\nFormat: Degree/Course | School Name | Graduation Year\nExample: BS Business Administration | University of the Philippines | 2022";
+            setCurrentStep("education");
+          }
+          break;
+
+        case "education":
+          const eduParts = userInput.split("|").map((s) => s.trim());
+          if (eduParts.length < 3) {
+            botResponse = "Please follow the format: Degree/Course | School | Year\nExample: BS Nursing | UST | 2020";
+            isValid = false;
+          } else {
+            updatedData.education.push({
+              degree: eduParts[0],
+              institution: eduParts[1],
+              year: eduParts[2],
+            });
+            
+            if (isEditMode) {
+              botResponse = "✅ Education updated! Would you like to add another educational background? Type 'yes' to add more, or 'done' to finish.";
+              setCurrentStep("education_more");
+            } else {
+              botResponse = "Would you like to add another educational background? Type 'yes' or 'no'";
+              setCurrentStep("education_more");
+            }
+          }
+          break;
+
+        case "education_more":
+          if (userInput.toLowerCase().includes("yes") || userInput.toLowerCase().includes("oo")) {
+            botResponse = "Enter your next educational background:\n\nFormat: Degree/Course | School | Year";
+            setCurrentStep("education");
+          } else if (isEditMode && (userInput.toLowerCase().includes("done") || userInput.toLowerCase().includes("no") || userInput.toLowerCase().includes("hindi"))) {
+            botResponse = "✅ Education section updated! Your resume has been updated.";
+            setCurrentStep("complete");
+            setIsEditMode(false);
+          } else {
+            botResponse = "Great! 🎓 Do you have any professional certifications? (e.g., TESDA, NC II, First Aid, etc.)\n\nFormat: Certification Name | Issuing Organization | Year\nExample: National Certificate II in Housekeeping | TESDA | 2023\n\nOr type 'skip' if none";
+            setCurrentStep("certifications");
+          }
+          break;
+
+        case "certifications":
+          if (userInput.toLowerCase() === 'skip' || userInput.toLowerCase() === 'none') {
+            updatedData.certifications = [];
+            
+            if (isEditMode) {
+              botResponse = "✅ Certifications cleared from your resume!";
+              setCurrentStep("complete");
+              setIsEditMode(false);
+            } else {
+              botResponse = "No problem! 🌍 What languages can you speak? (Include proficiency level)\n\nFormat: Language - Proficiency\nExample: English - Fluent, Tagalog - Native, Bisaya - Conversational\n\nSeparate multiple languages with commas.";
+              setCurrentStep("languages");
+            }
+          } else {
+            const certParts = userInput.split("|").map((s) => s.trim());
+            if (certParts.length < 2) {
+              botResponse = "Please follow the format: Certification Name | Issuing Organization | Year\nOr type 'skip' if you don't have any certifications";
+              isValid = false;
+            } else {
+              updatedData.certifications.push({
+                name: certParts[0],
+                issuer: certParts[1],
+                year: certParts[2] || "N/A",
+              });
+              
+              if (isEditMode) {
+                botResponse = "✅ Certification added! Do you want to add another certification? Type 'yes' to add more, or 'done' to finish.";
+                setCurrentStep("certifications_more");
+              } else {
+                botResponse = "Excellent! Do you want to add another certification? Type 'yes' or 'no'";
+                setCurrentStep("certifications_more");
+              }
+            }
+          }
+          break;
+
+        case "certifications_more":
+          if (userInput.toLowerCase().includes("yes") || userInput.toLowerCase().includes("oo")) {
+            botResponse = "Enter your next certification:\n\nFormat: Certification Name | Issuing Organization | Year";
+            setCurrentStep("certifications");
+          } else if (isEditMode && (userInput.toLowerCase().includes("done") || userInput.toLowerCase().includes("no") || userInput.toLowerCase().includes("hindi"))) {
+            botResponse = "✅ Certifications section updated! Your resume has been updated.";
+            setCurrentStep("complete");
+            setIsEditMode(false);
+          } else {
+            botResponse = "Perfect! 🌍 What languages can you speak? (Include proficiency level)\n\nFormat: Language - Proficiency\nExample: English - Fluent, Tagalog - Native, Bisaya - Conversational\n\nSeparate multiple languages with commas.";
+            setCurrentStep("languages");
+          }
+          break;
+
+        case "languages":
+          const languagesList = userInput.split(",").map((s) => s.trim()).filter((s) => s);
+          if (languagesList.length < 1) {
+            botResponse = "Please list at least one language with proficiency level.\nExample: English - Fluent, Tagalog - Native";
+            isValid = false;
+          } else {
+            updatedData.languages = languagesList;
+            
+            if (isEditMode) {
+              botResponse = `✅ Languages updated! Your resume now includes: ${languagesList.join(', ')}`;
+              setCurrentStep("complete");
+              setIsEditMode(false);
+            } else {
+              botResponse = "Almost done! 🎉 List your key skills separated by commas (at least 3 skills).\n\nExample: Customer Service, MS Office, Social Media Marketing, Time Management, Communication Skills";
+              setCurrentStep("skills");
+            }
+          }
+          break;
+
+        case "skills":
+          const skillsList = userInput.split(",").map((s) => s.trim()).filter((s) => s);
+          if (skillsList.length < 3) {
+            botResponse = "Please list at least 3 skills separated by commas.";
+            isValid = false;
+          } else {
+            updatedData.skills = skillsList;
+            
+            if (isEditMode) {
+              botResponse = `✅ Skills updated! Your resume now includes: ${skillsList.join(', ')}`;
+              setCurrentStep("complete");
+              setIsEditMode(false);
+            } else {
+              botResponse = "Congratulations! 🎊 Your resume is complete! Click 'Preview Resume' to see it, or 'Download PDF' to save it. You can also type 'edit' if you want to change anything.";
+              setCurrentStep("complete");
+            }
+          }
+          break;
+
+        case "complete":
+          if (userInput.toLowerCase().includes("edit")) {
+            setShowEditMenu(true);
+            botResponse = "What section would you like to edit? Choose from the menu below:";
+          } else if (userInput.toLowerCase().includes("new") || userInput.toLowerCase().includes("another")) {
+            setShowNewResumeDialog(true);
+            botResponse = "Would you like to create another resume? This will start fresh with a new conversation.";
+          } else {
+            botResponse = "You can preview your resume, download it as PDF, or save it to your account. Need any changes? Just let me know!\n\nType 'edit' to modify any section, or 'new resume' to create another one.";
+          }
+          break;
+
+        default:
+          botResponse = "Let's continue building your resume!";
     }
 
     if (isValid) {
@@ -858,6 +995,7 @@ const CareerBotSection = () => {
 
   const handleSaveToDatabase = async () => {
     try {
+      setIsSaving(true); // Start loading
       const pdfBlob = generatePDF();
       const filename = `${saveFileName}.pdf`;
       
@@ -871,6 +1009,8 @@ const CareerBotSection = () => {
     } catch (err) {
       setError("Failed to save resume. Please try again.");
       console.error("Save Error:", err);
+    } finally {
+      setIsSaving(false); // Stop loading
     }
   };
 
@@ -1042,6 +1182,51 @@ const loadLastChatFromDatabase = async () => {
     });
     
     console.log('Chat reset - starting new resume');
+  };
+
+  const handleEditSection = (section) => {
+    setIsEditMode(true);
+    setShowEditMenu(false);
+    
+    const sectionMessages = {
+      'name': "Let's update your name. What's your new full name?",
+      'email': "What's your updated email address?",
+      'phone': "What's your new mobile number? (Format: 09XX-XXX-XXXX)",
+      'location': "Where are you located now? (City, Province)",
+      'linkedin': "Update your LinkedIn profile URL (or type 'skip')",
+      'portfolio': "Update your portfolio/GitHub URL (or type 'skip')",
+      'objective': "Let's refine your career objective. What would you like it to say?",
+      'summary': "Update your professional summary (2-3 sentences about your experience and strengths)",
+      'experience': "Let's update your work experience. Tell me about your job:\n\nFormat: Job Title | Company Name | Start Date - End Date",
+      'education': "Update your education:\n\nFormat: Degree/Course | School Name | Graduation Year",
+      'certifications': "Update your certifications:\n\nFormat: Certification Name | Issuing Organization | Year\n(or type 'skip')",
+      'languages': "What languages can you speak? (Include proficiency)\n\nExample: English - Fluent, Tagalog - Native",
+      'skills': "List your key skills separated by commas (at least 3 skills)"
+    };
+    
+    setMessages((prev) => [...prev, { 
+      from: "bot", 
+      text: sectionMessages[section] || "What would you like to update?"
+    }]);
+    
+    // Map section names to step names
+    const sectionStepMap = {
+      'name': 'name',
+      'email': 'email',
+      'phone': 'phone',
+      'location': 'location',
+      'linkedin': 'linkedin',
+      'portfolio': 'portfolio',
+      'objective': 'objective',
+      'summary': 'summary',
+      'experience': 'experience',
+      'education': 'education',
+      'certifications': 'certifications',
+      'languages': 'languages',
+      'skills': 'skills'
+    };
+    
+    setCurrentStep(sectionStepMap[section]);
   };
 
   // Load a specific chat by ID
@@ -1290,14 +1475,24 @@ const loadLastChatFromDatabase = async () => {
         </div>
       )}
 
-      {currentStep === "complete" && (
-        <div className="px-6 pb-3">
-          {/* Main Actions - Horizontal Row */}
-          <div className="flex gap-2 mb-2">
-            <button
-              onClick={() => setShowPreview(true)}
-              className="flex-1 bg-white border border-gray-300 text-gray-700 py-2 px-3 rounded-md flex items-center justify-center gap-1.5 hover:border-gray-400 hover:bg-gray-50 transition-all text-xs font-medium"
-            >
+        {currentStep === "complete" && (
+          <div className="px-6 pb-3">
+            {/* Main Actions - Horizontal Row */}
+            <div className="flex gap-2 mb-2">
+              <button
+                onClick={() => setShowEditMenu(true)}
+                className="flex-1 bg-black text-white py-2 px-3 rounded-md flex items-center justify-center gap-1.5 hover:bg-gray-800 transition-all text-xs font-medium cursor-pointer"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                Edit
+              </button>
+              
+              <button
+                onClick={() => setShowPreview(true)}
+                className="flex-1 bg-white border border-gray-300 text-gray-700 py-2 px-3 rounded-md flex items-center justify-center gap-1.5 hover:border-gray-400 hover:bg-gray-50 transition-all text-xs font-medium cursor-pointer" 
+              >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
@@ -1307,7 +1502,7 @@ const loadLastChatFromDatabase = async () => {
 
             <button
               onClick={handleDownload}
-              className="flex-1 bg-yellow-400 text-gray-900 py-2 px-3 rounded-md flex items-center justify-center gap-1.5 hover:bg-yellow-500 transition-all text-xs font-semibold"
+              className="flex-1 bg-yellow-400 text-gray-900 py-2 px-3 rounded-md flex items-center justify-center gap-1.5 hover:bg-yellow-500 transition-all text-xs font-semibold cursor-pointer"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -1317,7 +1512,7 @@ const loadLastChatFromDatabase = async () => {
 
             <button
               onClick={handleOpenSaveDialog}
-              className="flex-1 bg-blue-600 text-white py-2 px-3 rounded-md flex items-center justify-center gap-1.5 hover:bg-blue-700 transition-all text-xs font-medium"
+              className="flex-1 bg-blue-600 text-white py-2 px-3 rounded-md flex items-center justify-center gap-1.5 hover:bg-blue-700 transition-all text-xs font-medium cursor-pointer"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
@@ -1329,7 +1524,7 @@ const loadLastChatFromDatabase = async () => {
           {/* New Resume Button */}
           <button
             onClick={() => setShowNewResumeDialog(true)}
-            className="w-full bg-[#272343] text-white py-2 px-3 rounded-md flex items-center justify-center gap-1.5 hover:bg-[#1c1930] transition-all text-xs font-medium"
+            className="w-full bg-[#272343] text-white py-2 px-3 rounded-md flex items-center justify-center gap-1.5 hover:bg-[#1c1930] transition-all text-xs font-medium cursor-pointer"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -1433,10 +1628,17 @@ const loadLastChatFromDatabase = async () => {
             <div className="flex gap-2">
               <button
                 onClick={handleSaveToDatabase}
-                disabled={!saveFileName.trim()}
-                className="flex-1 bg-blue-500 text-white py-2 px-4 rounded-lg font-semibold hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={!saveFileName.trim() || isSaving}
+                className="flex-1 bg-blue-500 text-white py-2 px-4 rounded-lg font-semibold hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                ✓ Yes, Save
+                {isSaving ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Saving...
+                  </>
+                ) : (
+                  <>✓ Yes, Save</>
+                )}
               </button>
               <button
                 onClick={() => {
@@ -1612,6 +1814,135 @@ const loadLastChatFromDatabase = async () => {
           </div>
         </div>
       )}
+      {/* Edit Resume Menu */}
+      {showEditMenu && (
+        <div className="fixed inset-0 bg-opacity-50 flex items-center justify-center z-50 p-4 backdrop-blur-md">
+          <div className="bg-white rounded-lg w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="flex justify-between items-center p-4 border-b ">
+              <h2 className="text-xl font-bold text-black">✏️ Edit Resume Sections</h2>
+              <button
+                onClick={() => setShowEditMenu(false)}
+                className="text-white hover:text-gray-200"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6">
+              <p className="text-sm text-gray-600 mb-4">
+                Choose which section you'd like to update:
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {/* Personal Info Section */}
+                <div className="border-2 border-gray-200 rounded-lg p-4 hover:border-purple-400 transition-all">
+                  <h3 className="font-bold text-gray-900 mb-2 flex items-center gap-2">
+                    <svg className="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                    Personal Information
+                  </h3>
+                  <div className="space-y-2">
+                    <button onClick={() => handleEditSection('name')} className="w-full text-left text-sm text-gray-700 hover:text-purple-600 hover:bg-purple-50 p-2 rounded transition-all">
+                      → Name
+                    </button>
+                    <button onClick={() => handleEditSection('email')} className="w-full text-left text-sm text-gray-700 hover:text-purple-600 hover:bg-purple-50 p-2 rounded transition-all">
+                      → Email
+                    </button>
+                    <button onClick={() => handleEditSection('phone')} className="w-full text-left text-sm text-gray-700 hover:text-purple-600 hover:bg-purple-50 p-2 rounded transition-all">
+                      → Phone
+                    </button>
+                    <button onClick={() => handleEditSection('location')} className="w-full text-left text-sm text-gray-700 hover:text-purple-600 hover:bg-purple-50 p-2 rounded transition-all">
+                      → Location
+                    </button>
+                    <button onClick={() => handleEditSection('linkedin')} className="w-full text-left text-sm text-gray-700 hover:text-purple-600 hover:bg-purple-50 p-2 rounded transition-all">
+                      → LinkedIn
+                    </button>
+                    <button onClick={() => handleEditSection('portfolio')} className="w-full text-left text-sm text-gray-700 hover:text-purple-600 hover:bg-purple-50 p-2 rounded transition-all">
+                      → Portfolio
+                    </button>
+                  </div>
+                </div>
+
+                {/* Career Section */}
+                <div className="border-2 border-gray-200 rounded-lg p-4 hover:border-purple-400 transition-all">
+                  <h3 className="font-bold text-gray-900 mb-2 flex items-center gap-2">
+                    <svg className="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                    Career Details
+                  </h3>
+                  <div className="space-y-2">
+                    <button onClick={() => handleEditSection('objective')} className="w-full text-left text-sm text-gray-700 hover:text-purple-600 hover:bg-purple-50 p-2 rounded transition-all">
+                      → Career Objective
+                    </button>
+                    <button onClick={() => handleEditSection('summary')} className="w-full text-left text-sm text-gray-700 hover:text-purple-600 hover:bg-purple-50 p-2 rounded transition-all">
+                      → Professional Summary
+                    </button>
+                    <button onClick={() => handleEditSection('experience')} className="w-full text-left text-sm text-gray-700 hover:text-purple-600 hover:bg-purple-50 p-2 rounded transition-all">
+                      → Work Experience
+                    </button>
+                  </div>
+                </div>
+
+                {/* Education Section */}
+                <div className="border-2 border-gray-200 rounded-lg p-4 hover:border-purple-400 transition-all">
+                  <h3 className="font-bold text-gray-900 mb-2 flex items-center gap-2">
+                    <svg className="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                    </svg>
+                    Education & Certifications
+                  </h3>
+                  <div className="space-y-2">
+                    <button onClick={() => handleEditSection('education')} className="w-full text-left text-sm text-gray-700 hover:text-purple-600 hover:bg-purple-50 p-2 rounded transition-all">
+                      → Education
+                    </button>
+                    <button onClick={() => handleEditSection('certifications')} className="w-full text-left text-sm text-gray-700 hover:text-purple-600 hover:bg-purple-50 p-2 rounded transition-all">
+                      → Certifications
+                    </button>
+                  </div>
+                </div>
+
+                {/* Skills Section */}
+                <div className="border-2 border-gray-200 rounded-lg p-4 hover:border-purple-400 transition-all">
+                  <h3 className="font-bold text-gray-900 mb-2 flex items-center gap-2">
+                    <svg className="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+                    </svg>
+                    Skills & Languages
+                  </h3>
+                  <div className="space-y-2">
+                    <button onClick={() => handleEditSection('skills')} className="w-full text-left text-sm text-gray-700 hover:text-purple-600 hover:bg-purple-50 p-2 rounded transition-all">
+                      → Skills
+                    </button>
+                    <button onClick={() => handleEditSection('languages')} className="w-full text-left text-sm text-gray-700 hover:text-purple-600 hover:bg-purple-50 p-2 rounded transition-all">
+                      → Languages
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-xs text-blue-800">
+                  💡 <strong>Tip:</strong> Click on any section above to update it. Your changes will be saved automatically!
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 border-t">
+              <button
+                onClick={() => setShowEditMenu(false)}
+                className="w-full py-2 px-4 border-2 border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-semibold"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
 
     </div>
   );
