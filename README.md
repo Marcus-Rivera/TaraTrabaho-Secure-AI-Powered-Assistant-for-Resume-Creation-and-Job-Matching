@@ -64,6 +64,30 @@ It provides students with practical experience in:
 ---
 
 ## 💻 Tech Stack  
-- *Frontend:* React.js  
-- *Backend:* PHP (CRUD Operations)  
-- *AI Integration:* Google Generative Language API (Gemini)
+### Frontend
+- **Framework:** React.js 18.x
+- **Build Tool:** Vite
+- **UI Libraries:** Material-UI (MUI), Tailwind CSS
+- **Routing:** React Router
+
+### Backend
+- **Runtime:** Node.js
+- **Framework:** Express.js
+- **Authentication:** JWT, bcrypt, Google OAuth
+- **File Handling:** Multer
+- **Security:** CORS, express-rate-limit
+
+### Database & Storage
+- **Database:** Turso (Cloud SQLite)
+- **File Storage:** BLOB storage (resumes, profile pictures)
+
+### External Services
+- **AI:** Google Gemini AI API (job matching, resume generation)
+- **Email:** SendGrid API (OTP verification, notifications)
+- **OAuth:** Google Cloud OAuth 2.0
+
+### Deployment
+- **Frontend Hosting:** Vercel
+- **Backend Hosting:** Render
+- **Version Control:** Git, GitHub
+
