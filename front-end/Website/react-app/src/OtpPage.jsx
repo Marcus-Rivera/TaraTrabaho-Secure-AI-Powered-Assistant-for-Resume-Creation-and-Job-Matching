@@ -210,6 +210,10 @@ const OtpPage = () => {
           </button>
         </p>
 
+        <p className="mt-2 text-xs text-gray-700 italic">
+          Check your spam or junk folder if you don't see the email
+        </p>
+
         {message && (
           <p className="mt-4 text-gray-700 text-sm font-medium">
             {message}
