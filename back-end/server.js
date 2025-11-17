@@ -47,8 +47,9 @@ app.use((req, res, next) => {
   }
   next();
 });
-app.use(express.json());
-app.use(bodyParser.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(bodyParser.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.set("trust proxy", 1);
 
 // ============================================================================
@@ -71,6 +72,86 @@ const db = createClient({
 })();
 
 const tempUserStore = {};
+
+// ============================================================================
+// AUTHENTICATION MIDDLEWARE
+// ============================================================================
+
+/**
+ * Middleware to verify JWT token
+ * This checks if the user is logged in
+ */
+const authenticateToken = (req, res, next) => {
+  // Get the token from the Authorization header
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1]; // Format: "Bearer TOKEN"
+
+  // If no token provided, reject the request
+  if (!token) {
+    return res.status(401).json({ 
+      success: false,
+      message: "Access token required. Please login first." 
+    });
+  }
+
+  // Verify the token
+  jwt.verify(token, SECRET_KEY, (err, decoded) => {
+    if (err) {
+      // Token is invalid or expired
+      return res.status(403).json({ 
+        success: false,
+        message: "Invalid or expired token. Please login again." 
+      });
+    }
+    
+    // Token is valid - store user info in request object
+    req.user = decoded; // decoded contains: { id, email, role }
+    next(); // Continue to the next middleware/route handler
+  });
+};
+
+/**
+ * Middleware to verify user is an admin
+ * Must be used AFTER authenticateToken
+ */
+const requireAdmin = (req, res, next) => {
+  // Check if user role is admin
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ 
+      success: false,
+      message: "Admin access required. You don't have permission for this action." 
+    });
+  }
+  next(); // User is admin, continue
+};
+
+/**
+ * Middleware to verify user owns the resource they're trying to access
+ * Must be used AFTER authenticateToken
+ * @param {string} paramName - The parameter name to check (default: 'userId')
+ */
+const verifyOwnership = (paramName = 'userId') => {
+  return (req, res, next) => {
+    // Get the user ID from URL params or request body
+    const resourceUserId = req.params[paramName] || req.body[paramName];
+    
+    // Convert to string for comparison (handles both string and number IDs)
+    const requestedId = String(resourceUserId);
+    const currentUserId = String(req.user.id);
+    
+    // Allow access if:
+    // 1. User owns the resource (IDs match)
+    // 2. User is an admin (can access anything)
+    if (currentUserId !== requestedId && req.user.role !== 'admin') {
+      return res.status(403).json({ 
+        success: false,
+        message: "Access denied. You can only access your own resources." 
+      });
+    }
+    
+    next(); // User owns resource or is admin, continue
+  };
+};
 
 // ============================================================================
 // GEMINI API ENDPOINT
