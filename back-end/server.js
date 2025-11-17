@@ -76,6 +76,58 @@ const tempUserStore = {};
 // IMPROVED AUTHENTICATION MIDDLEWARE (Add this to your server.js)
 // ============================================================================
 
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1]; // Bearer TOKEN
+
+  if (!token) {
+    return res.status(401).json({ 
+      success: false,
+      message: "Access denied. No token provided." 
+    });
+  }
+
+  jwt.verify(token, SECRET_KEY, (err, decoded) => {
+    if (err) {
+      return res.status(403).json({ 
+        success: false,
+        message: "Invalid or expired token." 
+      });
+    }
+    
+    // Attach user info to request object
+    req.user = {
+      id: decoded.id,
+      email: decoded.email,
+      role: decoded.role
+    };
+    
+    next();
+  });
+}
+
+/**
+ * Middleware to check if user is admin
+ * Must be used after authenticateToken
+ */
+function requireAdmin(req, res, next) {
+  if (!req.user) {
+    return res.status(401).json({ 
+      success: false,
+      message: "Authentication required" 
+    });
+  }
+  
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ 
+      success: false,
+      message: "Access denied. Admin privileges required." 
+    });
+  }
+  
+  next();
+}
+
 /**
  * Universal ownership verification middleware
  * Automatically checks if userId in params, body, or query matches the authenticated user
