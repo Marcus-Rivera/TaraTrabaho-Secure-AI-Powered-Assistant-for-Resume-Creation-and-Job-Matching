@@ -34,6 +34,15 @@ const DashboardSection = () => {
   const [retryCount, setRetryCount] = useState(0);
 
   // Fetch user stats and job recommendations
+
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('token');
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    };
+  };
+
   useEffect(() => {
     const fetchDashboardData = async () => {
       // Wait for userData to be fully loaded
