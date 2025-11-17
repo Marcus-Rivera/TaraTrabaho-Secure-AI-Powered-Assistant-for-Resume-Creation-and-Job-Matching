@@ -682,7 +682,7 @@ app.put("/api/users/:user_id", async (req, res) => {
 // ============================================================================
 // DELETE USER
 // ============================================================================
-app.delete("/api/users/:user_id", async (req, res) => {
+app.delete("/api/users/:user_id", authenticateToken, requireAdmin, async (req, res) => {
   const { user_id } = req.params;
 
   try {
@@ -822,7 +822,7 @@ app.delete("/api/jobs/:job_id", async (req, res) => {
 // ============================================================================
 
 // GET profile
-app.get("/api/profile/:email", async (req, res) => {
+app.get("/api/profile/:email", authenticateToken, async (req, res) => {
   const { email } = req.params;
 
   try {
@@ -944,7 +944,7 @@ app.post('/api/resume/save', upload.single('resume'), async (req, res) => {
 });
 
 // Get user's resumes
-app.get('/api/resume/user/:userId', async (req, res) => {
+app.get('/api/resume/user/:userId', authenticateToken, verifyOwnership(), async (req, res) => {
   const { userId } = req.params;
 
   try {
