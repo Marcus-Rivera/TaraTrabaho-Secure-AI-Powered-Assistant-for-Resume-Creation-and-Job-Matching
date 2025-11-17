@@ -9,7 +9,6 @@ const SECRET_KEY = process.env.JWT_SECRET || "your-secret-key";
 const crypto = require("crypto");
 const otpStore = {};
 
-
 process.env.TZ = 'Asia/Manila';
 
 //SendGrid
@@ -48,8 +47,8 @@ app.use((req, res, next) => {
   }
   next();
 });
-app.use(express.json({ limit: '10mb' }));
-app.use(bodyParser.json({ limit: '10mb' }));
+app.use(express.json());
+app.use(bodyParser.json());
 app.set("trust proxy", 1);
 
 // ============================================================================
@@ -72,20 +71,6 @@ const db = createClient({
 })();
 
 const tempUserStore = {};
-
-// ============================================================================
-// AUTH MIDDLEWARE
-// ============================================================================
-const auth = (req, res, next) => {
-  const token = req.headers['authorization']?.split(' ')[1];
-  if (!token) return res.status(401).json({ message: 'No token' });
-  
-  jwt.verify(token, SECRET_KEY, (err, user) => {
-    if (err) return res.status(403).json({ message: 'Invalid token' });
-    req.user = user;
-    next();
-  });
-};
 
 // ============================================================================
 // GEMINI API ENDPOINT
@@ -756,7 +741,7 @@ app.delete("/api/jobs/:job_id", async (req, res) => {
 // ============================================================================
 
 // GET profile
-app.get("/api/profile/:email", auth, async (req, res) => {
+app.get("/api/profile/:email", async (req, res) => {
   const { email } = req.params;
 
   try {
@@ -779,7 +764,7 @@ app.get("/api/profile/:email", auth, async (req, res) => {
 });
 
 // UPDATE profile
-app.put("/api/profile/:email", auth, async (req, res) => {
+app.put("/api/profile/:email", async (req, res) => {
   const { email } = req.params;
   const {
     firstname, lastname, gender, birthday, address, phone, bio,
@@ -1594,7 +1579,7 @@ const profilePictureUpload = multer({
 });
 
 // Upload profile picture
-app.post('/api/profile-picture/upload', auth, profilePictureUpload.single('profilePicture'), async (req, res) => {
+app.post('/api/profile-picture/upload', profilePictureUpload.single('profilePicture'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
@@ -1630,7 +1615,7 @@ app.post('/api/profile-picture/upload', auth, profilePictureUpload.single('profi
 });
 
 // Get profile picture
-app.get('/api/profile-picture/:userId', auth, async (req, res) => {
+app.get('/api/profile-picture/:userId', async (req, res) => {
   const { userId } = req.params;
   
   try {
