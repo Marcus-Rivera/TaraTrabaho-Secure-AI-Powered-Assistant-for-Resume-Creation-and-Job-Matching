@@ -845,8 +845,15 @@ app.get("/api/profile/:email", authenticateToken, async (req, res) => {
 });
 
 // UPDATE profile
-app.put("/api/profile/:email", async (req, res) => {
+app.put("/api/profile/:email", authenticateToken, async (req, res) => {
   const { email } = req.params;
+
+  if (req.user.email !== email && req.user.role !== 'admin') {
+    return res.status(403).json({ 
+      success: false, 
+      message: "You can only update your own profile" 
+    });
+  }
   const {
     firstname, lastname, gender, birthday, address, phone, bio,
     certification, seniorHigh, undergraduate, postgraduate,
@@ -907,13 +914,20 @@ const upload = multer({
 });
 
 // Save resume
-app.post('/api/resume/save', upload.single('resume'), async (req, res) => {
+app.post('/api/resume/save', authenticateToken, upload.single('resume'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
     const { userId } = req.body;
+
+    if (String(userId) !== String(req.user.id) && req.user.role !== 'admin') {
+      return res.status(403).json({ 
+        error: 'You can only upload resumes for your own account' 
+      });
+    }
+
     const filename = req.file.originalname;
     const fileData = req.file.buffer;
     const createdAt = new Date().toISOString();
@@ -986,7 +1000,7 @@ app.get('/api/resume/download/:resumeId', async (req, res) => {
 });
 
 // Delete resume
-app.delete('/api/resume/:resumeId', async (req, res) => {
+app.delete('/api/resume/:resumeId', authenticateToken, async (req, res) => {
   const { resumeId } = req.params;
 
   try {
@@ -997,6 +1011,13 @@ app.delete('/api/resume/:resumeId', async (req, res) => {
 
     if (result.rowsAffected === 0) {
       return res.status(404).json({ error: 'Resume not found' });
+    }
+
+    const resume = checkResult.rows[0];
+    if (String(resume.user_id) !== String(req.user.id) && req.user.role !== 'admin') {
+      return res.status(403).json({ 
+        error: 'You can only delete your own resumes' 
+      });
     }
 
     res.json({ success: true, message: 'Resume deleted successfully' });
