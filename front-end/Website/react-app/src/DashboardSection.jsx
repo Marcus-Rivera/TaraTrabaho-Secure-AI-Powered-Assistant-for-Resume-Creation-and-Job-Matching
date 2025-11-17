@@ -20,6 +20,8 @@ import { API_BASE } from "./config/api";
 const DashboardSection = () => {
   const { userData, loading: userLoading } = useSessionCheck();
   const navigate = useNavigate();
+
+  const token = localStorage.getItem('token');
   
   const [stats, setStats] = useState({
     applications: 0,
@@ -48,7 +50,11 @@ const DashboardSection = () => {
         console.log('Fetching dashboard data for:', userData.email);
         
         // Step 1: Get user profile to fetch user_id
-        const profileResponse = await fetch(`${API_BASE}/api/profile/${userData.email}`);
+        const profileResponse = await fetch(`${API_BASE}/api/profile/${userData.email}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
         
         if (!profileResponse.ok) {
           throw new Error(`Profile fetch failed: ${profileResponse.status}`);

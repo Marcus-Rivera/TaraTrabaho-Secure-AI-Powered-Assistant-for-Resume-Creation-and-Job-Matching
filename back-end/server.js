@@ -73,138 +73,6 @@ const db = createClient({
 const tempUserStore = {};
 
 // ============================================================================
-// IMPROVED AUTHENTICATION MIDDLEWARE (Add this to your server.js)
-// ============================================================================
-
-function authenticateToken(req, res, next) {
-  const authHeader = req.headers["authorization"];
-  const token = authHeader && authHeader.split(" ")[1]; // Bearer TOKEN
-
-  if (!token) {
-    return res.status(401).json({ 
-      success: false,
-      message: "Access denied. No token provided." 
-    });
-  }
-
-  jwt.verify(token, SECRET_KEY, (err, decoded) => {
-    if (err) {
-      return res.status(403).json({ 
-        success: false,
-        message: "Invalid or expired token." 
-      });
-    }
-    
-    // Attach user info to request object
-    req.user = {
-      id: decoded.id,
-      email: decoded.email,
-      role: decoded.role
-    };
-    
-    next();
-  });
-}
-
-/**
- * Middleware to check if user is admin
- * Must be used after authenticateToken
- */
-function requireAdmin(req, res, next) {
-  if (!req.user) {
-    return res.status(401).json({ 
-      success: false,
-      message: "Authentication required" 
-    });
-  }
-  
-  if (req.user.role !== 'admin') {
-    return res.status(403).json({ 
-      success: false,
-      message: "Access denied. Admin privileges required." 
-    });
-  }
-  
-  next();
-}
-
-/**
- * Universal ownership verification middleware
- * Automatically checks if userId in params, body, or query matches the authenticated user
- */
-const verifyOwnershipAuto = (req, res, next) => {
-  // Extract userId from params, body, or query
-  const userId = req.params.userId || req.body.userId || req.query.userId;
-  
-  if (!userId) {
-    // No userId to check, continue (might be a different type of endpoint)
-    return next();
-  }
-  
-  // Convert to string for comparison
-  const requestedId = String(userId);
-  const currentUserId = String(req.user.id);
-  
-  // Allow access if:
-  // 1. User owns the resource (IDs match)
-  // 2. User is an admin (can access anything)
-  if (currentUserId !== requestedId && req.user.role !== 'admin') {
-    return res.status(403).json({ 
-      success: false,
-      message: "Access denied. You can only access your own resources." 
-    });
-  }
-  
-  next(); // User owns resource or is admin, continue
-};
-
-/**
- * For endpoints that need to verify ownership from related tables
- * (like resume_id, chat_id, skill_id, etc.)
- */
-const verifyOwnershipByResource = (tableName, idParam, userIdColumn = 'user_id') => {
-  return async (req, res, next) => {
-    const resourceId = req.params[idParam];
-    
-    if (!resourceId) {
-      return next();
-    }
-    
-    try {
-      const result = await db.execute({
-        sql: `SELECT ${userIdColumn} FROM ${tableName} WHERE ${idParam} = ?`,
-        args: [resourceId]
-      });
-      
-      if (result.rows.length === 0) {
-        return res.status(404).json({ 
-          success: false,
-          error: 'Resource not found' 
-        });
-      }
-      
-      const resource = result.rows[0];
-      
-      // Check ownership
-      if (String(resource[userIdColumn]) !== String(req.user.id) && req.user.role !== 'admin') {
-        return res.status(403).json({ 
-          success: false,
-          error: 'You can only access your own resources' 
-        });
-      }
-      
-      next();
-    } catch (err) {
-      console.error('Ownership verification error:', err);
-      return res.status(500).json({ 
-        success: false,
-        error: 'Failed to verify ownership' 
-      });
-    }
-  };
-};
-
-// ============================================================================
 // GEMINI API ENDPOINT
 // ============================================================================
 app.post("/api/gemini", async (req, res) => {
@@ -873,15 +741,8 @@ app.delete("/api/jobs/:job_id", async (req, res) => {
 // ============================================================================
 
 // GET profile
-app.get("/api/profile/:email", authenticateToken, async (req, res) => {
+app.get("/api/profile/:email", async (req, res) => {
   const { email } = req.params;
-
-  if (req.user.email !== email && req.user.role !== 'admin') {
-    return res.status(403).json({ 
-      success: false,
-      message: "You can only view your own profile" 
-    });
-  }
 
   try {
     const result = await db.execute({
@@ -903,15 +764,8 @@ app.get("/api/profile/:email", authenticateToken, async (req, res) => {
 });
 
 // UPDATE profile
-app.put("/api/profile/:email", authenticateToken, async (req, res) => {
+app.put("/api/profile/:email", async (req, res) => {
   const { email } = req.params;
-
-  if (req.user.email !== email && req.user.role !== 'admin') {
-    return res.status(403).json({ 
-      success: false,
-      message: "You can only update your own profile" 
-    });
-  }
   const {
     firstname, lastname, gender, birthday, address, phone, bio,
     certification, seniorHigh, undergraduate, postgraduate,
@@ -972,7 +826,7 @@ const upload = multer({
 });
 
 // Save resume
-app.post('/api/resume/save', authenticateToken, verifyOwnershipAuto, upload.single('resume'), async (req, res) => {
+app.post('/api/resume/save', upload.single('resume'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
@@ -1009,7 +863,7 @@ app.post('/api/resume/save', authenticateToken, verifyOwnershipAuto, upload.sing
 });
 
 // Get user's resumes
-app.get('/api/resume/user/:userId', authenticateToken, verifyOwnershipAuto, async (req, res) => {
+app.get('/api/resume/user/:userId', async (req, res) => {
   const { userId } = req.params;
 
   try {
@@ -1051,7 +905,7 @@ app.get('/api/resume/download/:resumeId', async (req, res) => {
 });
 
 // Delete resume
-app.delete('/api/resume/:resumeId', authenticateToken, verifyOwnershipByResource('resume', 'resumeId'), async (req, res) => {
+app.delete('/api/resume/:resumeId', async (req, res) => {
   const { resumeId } = req.params;
 
   try {
@@ -1076,7 +930,7 @@ app.delete('/api/resume/:resumeId', authenticateToken, verifyOwnershipByResource
 // ============================================================================
 
 // CREATE chat history
-app.post('/api/chat/save', authenticateToken, verifyOwnershipAuto, async (req, res) => {
+app.post('/api/chat/save', async (req, res) => {
   try {
     const { userId, chatData, resumeData } = req.body;
     
@@ -1105,7 +959,7 @@ app.post('/api/chat/save', authenticateToken, verifyOwnershipAuto, async (req, r
 });
 
 // UPDATE chat history
-app.put('/api/chat/update/:chatId', verifyOwnershipByResource('chathistory', 'chatId'), async (req, res) => {
+app.put('/api/chat/update/:chatId', async (req, res) => {
   try {
     const { chatId } = req.params;
     const { chatData, resumeData } = req.body;
@@ -1139,7 +993,7 @@ app.put('/api/chat/update/:chatId', verifyOwnershipByResource('chathistory', 'ch
 });
 
 // GET chat history
-app.get('/api/chat/history/:userId', authenticateToken, verifyOwnershipAuto, async (req, res) => {
+app.get('/api/chat/history/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
 
@@ -1163,7 +1017,7 @@ app.get('/api/chat/history/:userId', authenticateToken, verifyOwnershipAuto, asy
 });
 
 // DELETE chat history
-app.delete('/api/chat/:chatId', authenticateToken, verifyOwnershipByResource('chathistory', 'chatId'), async (req, res) => {
+app.delete('/api/chat/:chatId', async (req, res) => {
   try {
     const { chatId } = req.params;
 
@@ -1186,7 +1040,7 @@ app.delete('/api/chat/:chatId', authenticateToken, verifyOwnershipByResource('ch
 // ============================================================================
 // JOB RECOMMENDATION ENDPOINT
 // ============================================================================
-app.post('/api/jobs/recommend', authenticateToken, verifyOwnershipAuto, async (req, res) => {
+app.post('/api/jobs/recommend', async (req, res) => {
   try {
     const { userId } = req.body;
     
@@ -1369,7 +1223,7 @@ app.post('/api/jobs/recommend', authenticateToken, verifyOwnershipAuto, async (r
 // ============================================================================
 // GET APPLICATION STATS
 // ============================================================================
-app.get('/api/stats/:userId', authenticateToken, verifyOwnershipAuto, async (req, res) => {
+app.get('/api/stats/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
 
@@ -1400,7 +1254,7 @@ app.get('/api/stats/:userId', authenticateToken, verifyOwnershipAuto, async (req
 // ============================================================================
 // JOB APPLICATION ENDPOINT
 // ============================================================================
-app.post('/api/jobs/apply', authenticateToken, verifyOwnershipAuto, upload.single('resume'), async (req, res) => {
+app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
   try {
     const { userId, jobId, fullName, email, phone, coverLetter, resumeSource, resumeId } = req.body;
     
@@ -1584,7 +1438,7 @@ app.post('/api/jobs/apply', authenticateToken, verifyOwnershipAuto, upload.singl
 // ============================================================================
 // GET USER'S APPLICATIONS
 // ============================================================================
-app.get('/api/applications/user/:userId', authenticateToken, verifyOwnershipAuto, async (req, res) => {
+app.get('/api/applications/user/:userId', async (req, res) => {
   const { userId } = req.params;
   
   try {
@@ -1610,7 +1464,7 @@ app.get('/api/applications/user/:userId', authenticateToken, verifyOwnershipAuto
 // ============================================================================
 // DOWNLOAD APPLICATION RESUME
 // ============================================================================
-app.get('/api/applications/resume/:applicationId', authenticateToken, verifyOwnershipByResource('application', 'applicationId'), async (req, res) => {
+app.get('/api/applications/resume/:applicationId', async (req, res) => {
   const { applicationId } = req.params;
   
   try {
@@ -1639,7 +1493,7 @@ app.get('/api/applications/resume/:applicationId', authenticateToken, verifyOwne
 // ============================================================================
 
 // GET saved jobs
-app.get('/api/saved-jobs/:userId', authenticateToken, verifyOwnershipAuto, async (req, res) => {
+app.get('/api/saved-jobs/:userId', async (req, res) => {
   const { userId } = req.params;
   
   try {
@@ -1656,7 +1510,7 @@ app.get('/api/saved-jobs/:userId', authenticateToken, verifyOwnershipAuto, async
 });
 
 // SAVE a job
-app.post('/api/saved-jobs', authenticateToken, verifyOwnershipAuto, async (req, res) => {
+app.post('/api/saved-jobs', async (req, res) => {
   const { userId, jobId } = req.body;
   
   if (!userId || !jobId) {
@@ -1684,7 +1538,7 @@ app.post('/api/saved-jobs', authenticateToken, verifyOwnershipAuto, async (req, 
 });
 
 // UNSAVE a job
-app.delete('/api/saved-jobs/:userId/:jobId', authenticateToken, verifyOwnershipAuto, async (req, res) => {
+app.delete('/api/saved-jobs/:userId/:jobId', async (req, res) => {
   const { userId, jobId } = req.params;
   
   try {
@@ -1725,7 +1579,7 @@ const profilePictureUpload = multer({
 });
 
 // Upload profile picture
-app.post('/api/profile-picture/upload', authenticateToken, verifyOwnershipAuto, profilePictureUpload.single('profilePicture'), async (req, res) => {
+app.post('/api/profile-picture/upload', profilePictureUpload.single('profilePicture'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
@@ -1785,7 +1639,7 @@ app.get('/api/profile-picture/:userId', async (req, res) => {
 });
 
 // Delete profile picture
-app.delete('/api/profile-picture/:userId', authenticateToken, verifyOwnershipAuto, async (req, res) => {
+app.delete('/api/profile-picture/:userId', async (req, res) => {
   const { userId } = req.params;
   
   try {
@@ -1810,7 +1664,7 @@ app.delete('/api/profile-picture/:userId', authenticateToken, verifyOwnershipAut
 // ============================================================================
 
 // GET skills
-app.get('/api/skills/:userId',  authenticateToken, verifyOwnershipAuto, async (req, res) => {
+app.get('/api/skills/:userId', async (req, res) => {
   const { userId } = req.params;
   
   try {
@@ -1827,7 +1681,7 @@ app.get('/api/skills/:userId',  authenticateToken, verifyOwnershipAuto, async (r
 });
 
 // ADD skill
-app.post('/api/skills', authenticateToken, verifyOwnershipAuto, async (req, res) => {
+app.post('/api/skills', async (req, res) => {
   const { userId, skillName } = req.body;
   
   if (!userId || !skillName) {
@@ -1858,7 +1712,7 @@ app.post('/api/skills', authenticateToken, verifyOwnershipAuto, async (req, res)
 });
 
 // DELETE skill
-app.delete('/api/skills/:skillId', authenticateToken, verifyOwnershipByResource('skills', 'skillId'), async (req, res) => {
+app.delete('/api/skills/:skillId', async (req, res) => {
   const { skillId } = req.params;
   
   try {
@@ -1879,7 +1733,7 @@ app.delete('/api/skills/:skillId', authenticateToken, verifyOwnershipByResource(
 });
 
 // BULK UPDATE skills
-app.put('/api/skills/bulk/:userId', authenticateToken, verifyOwnershipAuto, async (req, res) => {
+app.put('/api/skills/bulk/:userId', async (req, res) => {
   const { userId } = req.params;
   const { skills } = req.body;
   
@@ -1916,7 +1770,7 @@ app.put('/api/skills/bulk/:userId', authenticateToken, verifyOwnershipAuto, asyn
 // ============================================================================
 
 // Track activity
-app.post('/api/analytics/track', authenticateToken, verifyOwnershipAuto, async (req, res) => {
+app.post('/api/analytics/track', async (req, res) => {
   const { userId, activityType } = req.body;
   
   if (!userId || !activityType) {
@@ -1938,7 +1792,7 @@ app.post('/api/analytics/track', authenticateToken, verifyOwnershipAuto, async (
 });
 
 // Daily users
-app.get('/api/analytics/daily-users', authenticateToken, requireAdmin, async (req, res) => {
+app.get('/api/analytics/daily-users', async (req, res) => {
   try {
     const result = await db.execute(`
       SELECT 
@@ -1959,7 +1813,7 @@ app.get('/api/analytics/daily-users', authenticateToken, requireAdmin, async (re
 });
 
 // Resumes stats
-app.get('/api/analytics/resumes', authenticateToken, requireAdmin, async (req, res) => {
+app.get('/api/analytics/resumes', async (req, res) => {
   try {
     const result = await db.execute(`
       SELECT 
@@ -1979,7 +1833,7 @@ app.get('/api/analytics/resumes', authenticateToken, requireAdmin, async (req, r
 });
 
 // Applications stats
-app.get('/api/analytics/applications', authenticateToken, requireAdmin, async (req, res) => {
+app.get('/api/analytics/applications', async (req, res) => {
   try {
     const result = await db.execute(`
       SELECT 
@@ -1999,7 +1853,7 @@ app.get('/api/analytics/applications', authenticateToken, requireAdmin, async (r
 });
 
 // Matches stats
-app.get('/api/analytics/matches', authenticateToken, requireAdmin, async (req, res) => {
+app.get('/api/analytics/matches', async (req, res) => {
   try {
     const result = await db.execute(`
       SELECT 
@@ -2020,7 +1874,7 @@ app.get('/api/analytics/matches', authenticateToken, requireAdmin, async (req, r
 });
 
 // Summary stats
-app.get('/api/analytics/summary', authenticateToken, requireAdmin, async (req, res) => {
+app.get('/api/analytics/summary', async (req, res) => {
   try {
     const totalUsersResult = await db.execute('SELECT COUNT(*) as count FROM user WHERE role = "job_seeker"');
     const totalResumesResult = await db.execute('SELECT COUNT(*) as count FROM resume');
@@ -2465,7 +2319,7 @@ app.post("/api/check-auth-method", async (req, res) => {
 // ============================================================================
 
 // GET admin saved jobs
-app.get('/api/admin-saved-jobs/:userId', authenticateToken, requireAdmin, async (req, res) => {
+app.get('/api/admin-saved-jobs/:userId', async (req, res) => {
   const { userId } = req.params;
   
   console.log('📥 Fetching saved jobs for user:', userId);
@@ -2485,7 +2339,7 @@ app.get('/api/admin-saved-jobs/:userId', authenticateToken, requireAdmin, async 
 });
 
 // SAVE job (admin)
-app.post('/api/admin-saved-jobs', authenticateToken, requireAdmin, async (req, res) => {
+app.post('/api/admin-saved-jobs', async (req, res) => {
   const { userId, jobId } = req.body;
   
   if (!userId || !jobId) {
@@ -2516,7 +2370,7 @@ app.post('/api/admin-saved-jobs', authenticateToken, requireAdmin, async (req, r
 });
 
 // UNSAVE job (admin)
-app.delete('/api/admin-saved-jobs/:userId/:jobId', authenticateToken, requireAdmin, async (req, res) => {
+app.delete('/api/admin-saved-jobs/:userId/:jobId', async (req, res) => {
   const { userId, jobId } = req.params;
   
   console.log('🗑️ Unsaving job:', jobId, 'for user:', userId);
