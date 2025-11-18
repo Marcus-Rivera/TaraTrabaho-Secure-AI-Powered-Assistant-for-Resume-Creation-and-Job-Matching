@@ -14,6 +14,10 @@ const NotFound404 = () => {
     { label: 'FAQs', path: '/taratrabaho/faqs', icon: <FaQuestionCircle /> }
   ];
 
+  const removeToken = () => {
+    sessionStorage.removeItem('token');
+  }
+
   return (
     <div 
       className="min-h-screen bg-cover bg-center flex items-center justify-center p-4"
@@ -51,7 +55,10 @@ const NotFound404 = () => {
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8">
           <button
-            onClick={() => navigate('/')}
+            onClick={() => {
+              removeToken();
+              navigate('/');
+            }}
             className="flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-yellow-400 text-[#272343] hover:bg-yellow-500 transition transform hover:scale-105 font-bold shadow-lg"
           >
             <FaHome size={20} />
