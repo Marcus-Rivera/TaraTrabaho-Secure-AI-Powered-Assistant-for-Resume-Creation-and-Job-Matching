@@ -268,6 +268,7 @@ app.post("/api/auto-login", async (req, res) => {
 // ============================================================================
 // VERIFY OTP
 // ============================================================================
+const otpAttempts = {};
 app.post("/api/verify-otp", async (req, res) => {
   const { email, otp } = req.body;
 
@@ -277,6 +278,28 @@ app.post("/api/verify-otp", async (req, res) => {
 
   const normalizedEmail = email.toLowerCase().trim();
 
+  // ATTEMPT LIMITING
+  if (!otpAttempts[normalizedEmail]) {
+    otpAttempts[normalizedEmail] = { count: 0, lockedUntil: 0 };
+  }
+
+  const attempts = otpAttempts[normalizedEmail]; 
+
+  // Check if account is locked
+  if (attempts.lockedUntil > Date.now()) {
+    const remainingTime = Math.ceil((attempts.lockedUntil - Date.now()) / 60000);
+    return res.status(429).json({ 
+      success: false, 
+      message: `Account locked. Try again in ${remainingTime} minutes.` 
+    });
+  }
+
+  // Reset lock if expired
+  if (attempts.lockedUntil > 0 && attempts.lockedUntil <= Date.now()) {
+    attempts.count = 0;
+    attempts.lockedUntil = 0;
+  }
+
   const otpRecord = otpStore[normalizedEmail];
   if (!otpRecord) {
     return res.status(400).json({ success: false, message: "No OTP sent for this email" });
@@ -284,12 +307,31 @@ app.post("/api/verify-otp", async (req, res) => {
   
   if (Date.now() > otpRecord.expires) {
     delete otpStore[normalizedEmail];
+    delete otpAttempts[normalizedEmail];
     return res.status(400).json({ success: false, message: "OTP expired" });
   }
   
   if (otpRecord.otp !== otp) {
-    return res.status(400).json({ success: false, message: "Invalid OTP" });
+    // Increment failed attempts
+    attempts.count++;
+    
+    if (attempts.count >= 3) {
+      attempts.lockedUntil = Date.now() + 15 * 60 * 1000; // Lock for 15 minutes
+      delete otpStore[normalizedEmail]; // Delete OTP
+      return res.status(429).json({ 
+        success: false, 
+        message: "Too many failed attempts. Account locked for 15 minutes." 
+      });
+    }
+    
+    return res.status(400).json({ 
+      success: false, 
+      message: `Invalid OTP. ${3 - attempts.count} attempts remaining.` 
+    });
   }
+
+  delete otpAttempts[normalizedEmail];
+  delete otpStore[normalizedEmail];
 
   const tempUser = tempUserStore[normalizedEmail];
   if (!tempUser) {
@@ -318,7 +360,6 @@ app.post("/api/verify-otp", async (req, res) => {
       ]
     });
 
-    delete otpStore[normalizedEmail];
     delete tempUserStore[normalizedEmail];
 
     res.json({ 
@@ -456,6 +497,22 @@ app.post("/api/signup", signupLimiter, async (req, res) => {
 
   if (!email || !password || !username) {
     return res.status(400).json({ status: "error", message: "Email, username, and password are required" });
+  }
+
+  const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+
+  if (password.length < 8) {
+    return res.status(400).json({ 
+      status: "error", 
+      message: "Password must be at least 8 characters long" 
+    });
+  }
+  
+  if (!passwordRegex.test(password)) {
+    return res.status(400).json({ 
+      status: "error", 
+      message: "Password must contain uppercase, lowercase, number, and special character" 
+    });
   }
 
   try {
@@ -816,7 +873,7 @@ const upload = multer({
   fileFilter: (req, file, cb) => {
     const allowedTypes = /pdf/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
+    const mimetype = file.mimetype === 'application/pdf';
     if (mimetype && extname) {
       return cb(null, true);
     } else {
@@ -831,6 +888,13 @@ app.post('/api/resume/save', upload.single('resume'), async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
+
+    const fileBuffer = req.file.buffer;
+    const pdfMagicBytes = fileBuffer.slice(0, 4).toString();
+    if (!pdfMagicBytes.includes('%PDF')) {
+      return res.status(400).json({ error: 'Invalid PDF file' });
+    }
+
 
     const { userId } = req.body;
     const filename = req.file.originalname;
@@ -2276,6 +2340,24 @@ setInterval(() => {
     console.log(`🧹 Cleaned up ${cleanedCount} expired reset tokens`);
   }
 }, 15 * 60 * 1000);
+
+// Clean up old OTP attempt records every hour
+setInterval(() => {
+  const now = Date.now();
+  let cleanedCount = 0;
+  
+  for (const [email, data] of Object.entries(otpAttempts)) {
+    // Remove records that have been unlocked for more than 1 hour
+    if (data.lockedUntil > 0 && data.lockedUntil < now - 60 * 60 * 1000) {
+      delete otpAttempts[email];
+      cleanedCount++;
+    }
+  }
+  
+  if (cleanedCount > 0) {
+    console.log(`🧹 Cleaned up ${cleanedCount} old OTP attempt records`);
+  }
+}, 60 * 60 * 1000); // Run every hour
 
 // ============================================================================
 // CHECK AUTH METHOD
