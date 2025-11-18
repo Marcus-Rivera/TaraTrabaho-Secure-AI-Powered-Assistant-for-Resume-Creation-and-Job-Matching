@@ -59,6 +59,7 @@ const JobListingsSection = () => {
   const [userResumes, setUserResumes] = useState([]);
   const [resumeOption, setResumeOption] = useState('upload'); // 'upload' or 'saved'
   const [selectedResumeId, setSelectedResumeId] = useState('');
+  const [emailError, setEmailError] = useState('');
   const [applicationData, setApplicationData] = useState({
     fullName: '',
     email: '',
@@ -185,6 +186,43 @@ const JobListingsSection = () => {
     });
   };
 
+  const validateEmail = (email) => {
+    // Basic email regex pattern
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    
+    if (!email) {
+      return 'Email is required';
+    }
+    
+    if (!emailRegex.test(email)) {
+      return 'Please enter a valid email address';
+    }
+    
+    // Additional checks for common mistakes
+    if (email.includes('..')) {
+      return 'Email cannot contain consecutive dots';
+    }
+    
+    if (email.startsWith('.') || email.endsWith('.')) {
+      return 'Email cannot start or end with a dot';
+    }
+    
+    return ''; // No error
+  };
+
+  const handleEmailChange = (e) => {
+    const email = e.target.value;
+    setApplicationData(prev => ({ ...prev, email }));
+    
+    // Validate email on change
+    if (email) {
+      const error = validateEmail(email);
+      setEmailError(error);
+    } else {
+      setEmailError('');
+    }
+};
+
   const validatePDF = (file) => {
     return new Promise((resolve, reject) => {
       // Check file extension
@@ -302,6 +340,7 @@ const JobListingsSection = () => {
     setApplyModalOpen(false);
     setResumeOption('upload');
     setSelectedResumeId('');
+    setEmailError('');
     setApplicationData({
       fullName: '',
       email: '',
@@ -337,6 +376,14 @@ const JobListingsSection = () => {
       // Validate required fields
       if (!applicationData.fullName || !applicationData.email || !applicationData.phone) {
         showSnackbar('Please fill in all required fields', 'warning');
+        setIsSubmitting(false);
+        return;
+      }
+
+      const emailValidationError = validateEmail(applicationData.email);
+      if (emailValidationError) {
+        setEmailError(emailValidationError);
+        showSnackbar('Please enter a valid email address', 'error');
         setIsSubmitting(false);
         return;
       }
@@ -726,9 +773,29 @@ const JobListingsSection = () => {
             label="Email Address"
             type="email"
             value={applicationData.email}
-            onChange={(e) => setApplicationData(prev => ({ ...prev, email: e.target.value }))}
+            onChange={handleEmailChange}
+            onBlur={() => {
+              // Validate on blur (when user leaves the field)
+              if (applicationData.email) {
+                const error = validateEmail(applicationData.email);
+                setEmailError(error);
+              }
+            }}
+            error={!!emailError}
+            helperText={emailError || 'We\'ll send confirmation to this email'}
             sx={{ mb: 2 }}
             required
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  {emailError ? (
+                    <ErrorIcon sx={{ color: 'error.main' }} />
+                  ) : applicationData.email && !emailError ? (
+                    <CheckCircleIcon sx={{ color: 'success.main' }} />
+                  ) : null}
+                </InputAdornment>
+              ),
+            }}
           />
           
           <TextField
@@ -865,7 +932,8 @@ const JobListingsSection = () => {
             disabled={
               isSubmitting ||
               !applicationData.fullName || 
-              !applicationData.email || 
+              !applicationData.email ||
+              !!emailError | 
               !applicationData.phone ||
               (resumeOption === 'upload' && !applicationData.resume) ||
               (resumeOption === 'saved' && !selectedResumeId)
