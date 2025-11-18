@@ -464,16 +464,16 @@ const JobListingsSection = () => {
   };
 
   const filteredJobs = useMemo(() => {
-  return jobs.filter(job => {
-    const matchesSearch = job.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         job.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         job.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()));
-    const matchesLocation = location === '' || job.location.toLowerCase().includes(location.toLowerCase());
-    const matchesType = jobType === 'all' || job.type === jobType;
-    const matchesTab = tabValue === 0 || (tabValue === 1 && savedJobs.includes(job.id));
-    
-    return matchesSearch && matchesLocation && matchesType && matchesTab;
-  });
+    return jobs.filter(job => {
+      const matchesSearch = job.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          job.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          job.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()));
+      const matchesLocation = location === '' || job.location.toLowerCase().includes(location.toLowerCase());
+      const matchesType = jobType === 'all' || job.type === jobType;
+      const matchesTab = tabValue === 0 || (tabValue === 1 && savedJobs.includes(job.id));
+      
+      return matchesSearch && matchesLocation && matchesType && matchesTab;
+    });
   }, [jobs, searchTerm, location, jobType, tabValue, savedJobs]);
 
   const formatDate = (dateString) => {

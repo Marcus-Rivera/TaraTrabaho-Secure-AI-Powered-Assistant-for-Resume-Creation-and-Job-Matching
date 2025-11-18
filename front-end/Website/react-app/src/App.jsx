@@ -10,9 +10,8 @@ import AboutUsPage from "./AboutUsPage";
 import ManageUser from "./ManageUser";
 import JobListing from "./JobListing";
 import Faqs from "./Faqs";
-import Forget from "./ForgetPasswordPage";
-import Reset from "./ResetPasswordPage";
 import Report from "./Report";
+import NotFound404 from './NotFound404';
 
 // Import your sections
 import ProfileSection from "./ProfileSection";
@@ -61,7 +60,7 @@ function App() {
         </Route>
 
         {/* 404 Fallback */}
-        <Route path="*" element={<h1 className="text-center mt-10 text-2xl">404 Not Found</h1>} />
+        <Route path="*" element={<NotFound404 />} />
       </Routes>
     </Router>
   );
