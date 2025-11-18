@@ -185,6 +185,53 @@ const JobListingsSection = () => {
     });
   };
 
+  const validatePDF = (file) => {
+    return new Promise((resolve, reject) => {
+      // Check file extension
+      const validExtensions = ['pdf'];
+      const fileExtension = file.name.split('.').pop().toLowerCase();
+      
+      if (!validExtensions.includes(fileExtension)) {
+        reject(new Error('Only PDF files are allowed'));
+        return;
+      }
+      
+      // Check MIME type
+      if (file.type !== 'application/pdf') {
+        reject(new Error('Invalid file type. Only PDF files are accepted'));
+        return;
+      }
+      
+      // Check file size (5MB limit)
+      const maxSize = 5 * 1024 * 1024;
+      if (file.size > maxSize) {
+        reject(new Error('File size must be less than 5MB'));
+        return;
+      }
+      
+      // Verify PDF signature by reading first few bytes
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const arr = new Uint8Array(e.target.result);
+        const header = String.fromCharCode.apply(null, arr.slice(0, 5));
+        
+        if (header !== '%PDF-') {
+          reject(new Error('Invalid PDF file. The file appears to be corrupted or not a valid PDF'));
+          return;
+        }
+        
+        resolve(true);
+      };
+      
+      reader.onerror = () => {
+        reject(new Error('Failed to read file'));
+      };
+      
+      // Read only first 5 bytes to check PDF signature
+      reader.readAsArrayBuffer(file.slice(0, 5));
+    });
+  };
+
   const toggleSaveJob = async (jobId) => {
     if (!userData?.email) {
       showSnackbar('Please log in to save jobs', 'warning');
@@ -346,15 +393,26 @@ const JobListingsSection = () => {
     }
   };
 
-  const handleFileChange = (e) => {
+  const handleFileChange = async (e) => {
     const file = e.target.files[0];
-    if (file) {
-      // Check file size (5MB limit)
-      if (file.size > 5 * 1024 * 1024) {
-        alert('File size should not exceed 5MB');
-        return;
-      }
+    
+    if (!file) return;
+    
+    try {
+      // Validate the PDF
+      await validatePDF(file);
+      
+      // If validation passes, set the file
       setApplicationData(prev => ({ ...prev, resume: file }));
+      showSnackbar('Resume uploaded successfully', 'success');
+      
+    } catch (error) {
+      // Show error to user
+      showSnackbar(error.message, 'error');
+      
+      // Clear the file input
+      e.target.value = '';
+      setApplicationData(prev => ({ ...prev, resume: null }));
     }
   };
 
@@ -725,7 +783,7 @@ const JobListingsSection = () => {
               <input
                 type="file"
                 id="resume-upload"
-                accept=".pdf,.doc,.docx"
+                accept=".pdf,application/pdf"
                 onChange={handleFileChange}
                 style={{ display: 'none' }}
               />
@@ -743,7 +801,7 @@ const JobListingsSection = () => {
                     },
                   }}
                 >
-                  Upload Resume
+                  Upload Resume (PDF Only)
                 </Button>
               </label>
               {applicationData.resume && (
@@ -752,7 +810,7 @@ const JobListingsSection = () => {
                 </Typography>
               )}
               <Typography variant="caption" display="block" sx={{ mt: 1, color: 'text.secondary' }}>
-                Supported formats: PDF, DOC, DOCX (Max 5MB)
+                Supported format: PDF only (Max 5MB)
               </Typography>
             </div>
           ) : (
