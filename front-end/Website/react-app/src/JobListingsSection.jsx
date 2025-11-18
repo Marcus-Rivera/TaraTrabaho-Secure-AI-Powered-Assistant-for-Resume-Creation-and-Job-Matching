@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Card,
   CardContent,
@@ -463,7 +463,8 @@ const JobListingsSection = () => {
     }
   };
 
-  const filteredJobs = jobs.filter(job => {
+  const filteredJobs = useMemo(() => {
+  return jobs.filter(job => {
     const matchesSearch = job.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          job.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          job.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -473,6 +474,7 @@ const JobListingsSection = () => {
     
     return matchesSearch && matchesLocation && matchesType && matchesTab;
   });
+  }, [jobs, searchTerm, location, jobType, tabValue, savedJobs]);
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);
