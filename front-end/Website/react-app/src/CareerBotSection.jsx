@@ -295,6 +295,10 @@ const CareerBotSection = () => {
       return null;
     }
   };
+  const simulateTyping = (duration = 1000) => {
+    setIsLoading(true);
+    return new Promise(resolve => setTimeout(resolve, duration));
+  };
 
   const handleSend = async () => {
     if (input.trim() === "" || isLoading) return;
@@ -304,12 +308,12 @@ const CareerBotSection = () => {
     
     const userInput = input.trim();
     setInput("");
-    setIsLoading(true);
-
-    setTimeout(async () => {
-      await processUserInput(userInput);
-      setIsLoading(false);
-    }, 500);
+    
+    // Simulate realistic typing delay
+    await simulateTyping(800 + Math.random() * 400); // 800-1200ms
+    
+    await processUserInput(userInput);
+    setIsLoading(false);
   };
 
   const processUserInput = async (userInput) => {
@@ -1655,11 +1659,11 @@ const loadLastChatFromDatabase = async () => {
       )}
       {/* Create Another Resume Dialog */}
       {showNewResumeDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-md p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Create Another Resume?</h2>
+        <div className="fixed inset-0 bg-opacity-50 flex items-center justify-center z-50 p-4 backdrop-blur-md">
+          <div className="bg-black rounded-lg w-full max-w-md p-6">
+            <h2 className="text-xl font-bold text-white mb-4">Create Another Resume?</h2>
             
-            <p className="text-sm text-gray-600 mb-4">
+            <p className="text-sm text-white mb-4">
               Are you sure you want to create a new resume? This will start a fresh conversation and reset all fields.
             </p>
             
@@ -1672,13 +1676,13 @@ const loadLastChatFromDatabase = async () => {
             <div className="flex gap-2">
               <button
                 onClick={handleCreateNewResume}
-                className="flex-1 bg-purple-500 text-white py-2 px-4 rounded-lg font-semibold hover:bg-purple-600 transition-colors"
+                className="flex-1 bg-blue-500 text-white py-2 px-4 rounded-lg font-semibold hover:bg-blue-600 transition-colors cursor-pointer"
               >
                 ✓ Yes, Start New Resume
               </button>
               <button
                 onClick={() => setShowNewResumeDialog(false)}
-                className="flex-1 px-6 py-2 border-2 border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-semibold"
+                className="flex-1 px-6 py-2  text-white bg-red-400 hover:bg-red-500 rounded-lg transition-colors font-semibold cursor-pointer"
               >
                 Cancel
               </button>

@@ -35,24 +35,49 @@ const ProfileSection = () => {
     postgraduate: "",
   });
 
+  const maxDate = new Date();
+  maxDate.setFullYear(maxDate.getFullYear() - 16);
+  const maxDateString = maxDate.toISOString().split('T')[0];
+
   const [originalData, setOriginalData] = useState({});
 
-  // ✅ Define loadProfilePicture BEFORE useEffect
   const loadProfilePicture = (userId) => {
+    // Check cache first
+    const cachedImage = sessionStorage.getItem(`profileImage_${userId}`);
+    if (cachedImage && cachedImage.startsWith('data:image')) {
+      console.log('📸 ProfileSection: Loading from cache');
+      setProfileImage(cachedImage);
+      return;
+    }
+
+    console.log('📸 ProfileSection: Fetching from API');
     fetch(`${API_BASE}/api/profile-picture/${userId}`)
       .then((res) => {
         if (res.ok) {
           return res.blob();
         }
-        return null;
+        throw new Error('Profile picture not found');
       })
       .then((blob) => {
         if (blob) {
-          const imageUrl = URL.createObjectURL(blob);
-          setProfileImage(imageUrl);
+          // Convert to base64 for consistency
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const base64data = reader.result;
+            setProfileImage(base64data);
+            sessionStorage.setItem(`profileImage_${userId}`, base64data);
+            console.log('✅ ProfileSection: Picture loaded and cached');
+          };
+          reader.onerror = () => {
+            console.error('Error reading profile picture blob');
+          };
+          reader.readAsDataURL(blob);
         }
       })
-      .catch((err) => console.error("Error loading profile picture:", err));
+      .catch((err) => {
+        console.error("Error loading profile picture:", err);
+        sessionStorage.removeItem(`profileImage_${userId}`);
+      });
   };
 
   // Load user profile from backend
@@ -191,29 +216,46 @@ const ProfileSection = () => {
       const data = await response.json();
 
       if (data.success) {
-        // Update profile picture display
-        const imageUrl = URL.createObjectURL(file);
-        setProfileImage(imageUrl);
-        
-        // ✅ DISPATCH EVENT TO UPDATE SIDEBAR
-        window.dispatchEvent(new CustomEvent('profilePictureUpdated', { 
-          detail: { userId: userProfile.user_id } 
-        }));
-        
-        setAlertType("success");
-        setAlertMsg("Profile picture updated successfully!");
+        // ✅ Convert to base64 instead of blob URL (to match sidebar format)
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64data = reader.result;
+          setProfileImage(base64data);
+          
+          // ✅ Cache in sessionStorage (same as sidebar)
+          sessionStorage.setItem(`profileImage_${userProfile.user_id}`, base64data);
+          
+          // ✅ DISPATCH EVENT TO UPDATE SIDEBAR
+          window.dispatchEvent(new CustomEvent('profilePictureUpdated', { 
+            detail: { userId: userProfile.user_id } 
+          }));
+          
+          setAlertType("success");
+          setAlertMsg("Profile picture updated successfully!");
+          setShowAlert(true);
+          setTimeout(() => setShowAlert(false), 3000);
+        };
+        reader.onerror = () => {
+          setAlertType("error");
+          setAlertMsg("Error processing image");
+          setShowAlert(true);
+          setTimeout(() => setShowAlert(false), 3000);
+        };
+        reader.readAsDataURL(file);
       } else {
         setAlertType("error");
         setAlertMsg("Failed to upload profile picture");
+        setShowAlert(true);
+        setTimeout(() => setShowAlert(false), 3000);
       }
     } catch (error) {
       console.error('Error uploading profile picture:', error);
       setAlertType("error");
       setAlertMsg("Error uploading profile picture");
-    } finally {
-      setUploading(false);
       setShowAlert(true);
       setTimeout(() => setShowAlert(false), 3000);
+    } finally {
+      setUploading(false);
     }
   };
   
@@ -230,80 +272,80 @@ const ProfileSection = () => {
   };
 
   const handleSave = async () => {
-  // VALIDATE BEFORE SAVING
-  const firstnameError = validateName(formData.firstname, "First name");
-  const lastnameError = validateName(formData.lastname, "Last name");
-  const birthdayError = validateBirthday(formData.birthday);
-  const phoneError = validatePhone(formData.phone);
-  
-  // Check for any errors
-  if (firstnameError) {
-    setAlertType("error");
-    setAlertMsg(firstnameError);
-    setShowAlert(true);
-    setTimeout(() => setShowAlert(false), 5000);
-    return;
-  }
-  
-  if (lastnameError) {
-    setAlertType("error");
-    setAlertMsg(lastnameError);
-    setShowAlert(true);
-    setTimeout(() => setShowAlert(false), 5000);
-    return;
-  }
-  
-  if (birthdayError) {
-    setAlertType("error");
-    setAlertMsg(birthdayError);
-    setShowAlert(true);
-    setTimeout(() => setShowAlert(false), 5000);
-    return;
-  }
-  
-  if (phoneError) {
-    setAlertType("error");
-    setAlertMsg(phoneError);
-    setShowAlert(true);
-    setTimeout(() => setShowAlert(false), 5000);
-    return;
-  }
-
-  try {
-    const res = await fetch(
-      `${API_BASE}/api/profile/${userData.email}`,
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      }
-    );
-
-    const result = await res.json();
-    if (res.ok) {
-      setAlertType("success");
-      setAlertMsg("Profile updated successfully!");
-      const updatedUser = {
-        ...formData,
-        email: userData.email,
-      };
-      sessionStorage.setItem("userData", JSON.stringify(updatedUser));
-      window.dispatchEvent(new Event("userDataUpdated"));
-      setOriginalData(formData);
-      setIsEditing(false);
-    } else {
+    // VALIDATE BEFORE SAVING
+    const firstnameError = validateName(formData.firstname, "First name");
+    const lastnameError = validateName(formData.lastname, "Last name");
+    const birthdayError = validateBirthday(formData.birthday);
+    const phoneError = validatePhone(formData.phone);
+    
+    // Check for any errors
+    if (firstnameError) {
       setAlertType("error");
-      setAlertMsg(result.message || "Update failed");
+      setAlertMsg(firstnameError);
+      setShowAlert(true);
+      setTimeout(() => setShowAlert(false), 5000);
+      return;
     }
-  } catch (err) {
-    console.error("Error saving profile:", err);
-    setAlertType("error");
-    setAlertMsg("Error saving profile");
-  } finally {
-    setShowAlert(true);
-    setTimeout(() => setShowAlert(false), 3000);
-  }
-};
+    
+    if (lastnameError) {
+      setAlertType("error");
+      setAlertMsg(lastnameError);
+      setShowAlert(true);
+      setTimeout(() => setShowAlert(false), 5000);
+      return;
+    }
+    
+    if (birthdayError) {
+      setAlertType("error");
+      setAlertMsg(birthdayError);
+      setShowAlert(true);
+      setTimeout(() => setShowAlert(false), 5000);
+      return;
+    }
+    
+    if (phoneError) {
+      setAlertType("error");
+      setAlertMsg(phoneError);
+      setShowAlert(true);
+      setTimeout(() => setShowAlert(false), 5000);
+      return;
+    }
+
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/profile/${userData.email}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(formData),
+        }
+      );
+
+      const result = await res.json();
+      if (res.ok) {
+        setAlertType("success");
+        setAlertMsg("Profile updated successfully!");
+        const updatedUser = {
+          ...formData,
+          email: userData.email,
+        };
+        sessionStorage.setItem("userData", JSON.stringify(updatedUser));
+        window.dispatchEvent(new Event("userDataUpdated"));
+        setOriginalData(formData);
+        setIsEditing(false);
+      } else {
+        setAlertType("error");
+        setAlertMsg(result.message || "Update failed");
+      }
+    } catch (err) {
+      console.error("Error saving profile:", err);
+      setAlertType("error");
+      setAlertMsg("Error saving profile");
+    } finally {
+      setShowAlert(true);
+      setTimeout(() => setShowAlert(false), 3000);
+    }
+  };
 
   const handleCancel = () => {
     setFormData(originalData);
@@ -313,8 +355,19 @@ const ProfileSection = () => {
   // ✅ Loading and error checks AFTER all functions are defined
   if (loading) {
     return (
-      <main className="flex items-center justify-center h-screen text-[#272343]">
-        <h2>Loading profile...</h2>
+      <main className="flex-1 lg:p-8 bg-white overflow-y-auto">
+        <div className="animate-pulse">
+          <div className="h-8 bg-gray-200 rounded w-1/4 mx-auto mb-6"></div>
+          <div className="bg-gray-100 rounded-[40px] p-8">
+            <div className="flex gap-8">
+              <div className="w-40 h-40 bg-gray-200 rounded-full"></div>
+              <div className="flex-1 space-y-4">
+                <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+              </div>
+            </div>
+          </div>
+        </div>
       </main>
     );
   }
@@ -363,11 +416,20 @@ const ProfileSection = () => {
             
             {/* Upload Button Overlay */}
             <div 
-              className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <PhotoCameraIcon sx={{ color: 'white', fontSize: '2.5rem' }} />
-            </div>
+                className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                onClick={() => fileInputRef.current?.click()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    fileInputRef.current?.click();
+                  }
+                }}
+                role="button"
+                tabIndex={0}
+                aria-label="Upload profile picture"
+              >
+                <PhotoCameraIcon sx={{ color: 'white', fontSize: '2.5rem' }} />
+              </div>
             
             {/* Upload Indicator */}
             {uploading && (
@@ -465,7 +527,7 @@ const ProfileSection = () => {
                 type="date"
                 name="birthday"
                 value={formData.birthday}
-                max={new Date(new Date().setFullYear(new Date().getFullYear() - 16)).toISOString().split('T')[0]}
+                max={maxDateString}
                 onChange={handleChange}
                 disabled={!isEditing}
                 className={inputClassName}
