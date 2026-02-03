@@ -21,7 +21,30 @@ function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [isSuspended, setIsSuspended] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+
+  const [isSystemOnline, setIsSystemOnline] = useState(null); // null = checking, true = online, false = offline
   const navigate = useNavigate();
+
+  // Check system health on mount
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api/health`);
+        if (response.ok) {
+          setIsSystemOnline(true);
+        } else {
+          setIsSystemOnline(false);
+        }
+      } catch (error) {
+        setIsSystemOnline(false);
+      }
+    };
+
+    checkHealth();
+    // Optional: Re-check every 30 seconds
+    const interval = setInterval(checkHealth, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Auto-hide alert after duration (longer for suspension messages)
   useEffect(() => {
@@ -82,79 +105,79 @@ function LoginForm() {
   };
 
   const handleSubmit = async (e) => {
-  e.preventDefault();
+    e.preventDefault();
 
-  setSubmitted(true);
+    setSubmitted(true);
 
-  if (!validateForm()) {
-    setAlertMessage("Please fix the errors below");
-    setAlertSeverity("error");
-    setIsSuspended(false);
-    return;
-  }
-
-  setAlertMessage("");
-  setIsLoading(true);
-
-  try {
-    const response = await fetch(`${API_BASE}/api/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password })
-    });
-
-    // ✅ FIX: Handle rate limit (429) before parsing JSON
-    if (response.status === 429) {
-      setAlertMessage("Too many login attempts. Please try again in 15 minutes.");
-      setAlertSeverity("warning");
-      setIsSuspended(false);
-      setIsLoading(false);
-      return;
-    }
-
-    const data = await response.json();
-
-    if (data.status === "suspended") {
-      setAlertMessage(data.message);
-      setAlertSeverity("warning");
-      setIsSuspended(true);
-      setErrors({});
-      setIsLoading(false);
-      return;
-    }
-
-    if (response.ok && data.success) {
-      sessionStorage.setItem("token", data.token);
-      window.dispatchEvent(new Event('tokenUpdated'));
-      setEmail("");
-      setPassword("");
-      setErrors({});
-      setSubmitted(false);
-      setIsSuspended(false);
-      
-      const role = data.user.role;
-      if (role === "admin") {
-        navigate("/admin");
-      } else {
-        navigate("/taratrabaho");
-      }
-    } else {
-      const errorMsg = data.message || "Invalid email or password";
-      setAlertMessage(errorMsg);
+    if (!validateForm()) {
+      setAlertMessage("Please fix the errors below");
       setAlertSeverity("error");
       setIsSuspended(false);
-      setErrors({ email: "Invalid credentials", password: "Invalid credentials" });
-      setIsLoading(false);
+      return;
     }
 
-  } catch (error) {
-    console.error("Login error:", error);
-    setAlertMessage("Server error. Try again later.");
-    setAlertSeverity("error");
-    setIsSuspended(false);
-    setIsLoading(false);
-  }
-};
+    setAlertMessage("");
+    setIsLoading(true);
+
+    try {
+      const response = await fetch(`${API_BASE}/api/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password })
+      });
+
+      // ✅ FIX: Handle rate limit (429) before parsing JSON
+      if (response.status === 429) {
+        setAlertMessage("Too many login attempts. Please try again in 15 minutes.");
+        setAlertSeverity("warning");
+        setIsSuspended(false);
+        setIsLoading(false);
+        return;
+      }
+
+      const data = await response.json();
+
+      if (data.status === "suspended") {
+        setAlertMessage(data.message);
+        setAlertSeverity("warning");
+        setIsSuspended(true);
+        setErrors({});
+        setIsLoading(false);
+        return;
+      }
+
+      if (response.ok && data.success) {
+        sessionStorage.setItem("token", data.token);
+        window.dispatchEvent(new Event('tokenUpdated'));
+        setEmail("");
+        setPassword("");
+        setErrors({});
+        setSubmitted(false);
+        setIsSuspended(false);
+
+        const role = data.user.role;
+        if (role === "admin") {
+          navigate("/admin");
+        } else {
+          navigate("/taratrabaho");
+        }
+      } else {
+        const errorMsg = data.message || "Invalid email or password";
+        setAlertMessage(errorMsg);
+        setAlertSeverity("error");
+        setIsSuspended(false);
+        setErrors({ email: "Invalid credentials", password: "Invalid credentials" });
+        setIsLoading(false);
+      }
+
+    } catch (error) {
+      console.error("Login error:", error);
+      setAlertMessage("Server error. Try again later.");
+      setAlertSeverity("error");
+      setIsSuspended(false);
+      setIsLoading(false);
+    }
+  };
 
   // Handle Google Login Success
   const handleGoogleSuccess = async (credentialResponse) => {
@@ -186,7 +209,7 @@ function LoginForm() {
         sessionStorage.setItem("token", data.token);
         window.dispatchEvent(new Event('tokenUpdated'));
         console.log("✅ Google login successful!");
-        
+
         const role = data.user.role;
         if (role === "admin") {
           navigate("/admin");
@@ -216,19 +239,31 @@ function LoginForm() {
 
   return (
     <div
-      className="flex flex-col-reverse lg:flex-row bg-cover min-h-screen lg:items-center pt-12 pb-35 lg:pt-10 lg:pb-10"
+      className="flex flex-col-reverse lg:flex-row bg-cover min-h-screen lg:items-center pt-12 pb-35 lg:pt-10 lg:pb-10 relative"
       style={{ backgroundImage: `url(${bg})` }}
     >
+      {/* System Status Indicator */}
+      <div className="absolute top-4 right-4 flex items-center gap-2 bg-white/80 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm z-10">
+        <div className={`w-3 h-3 rounded-full ${isSystemOnline === null ? 'bg-gray-400 animate-pulse' :
+          isSystemOnline ? 'bg-green-500' : 'bg-red-500'
+          }`} />
+        <span className={`text-xs font-bold ${isSystemOnline === null ? 'text-gray-600' :
+          isSystemOnline ? 'text-green-700' : 'text-red-600'
+          }`}>
+          {isSystemOnline === null ? 'Checking System...' :
+            isSystemOnline ? 'System Online' : 'System Offline'}
+        </span>
+      </div>
       {/* Alert if login fails or account suspended */}
       {alertMessage && (
         <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-lg px-4">
-          <Alert 
-            severity={alertSeverity} 
+          <Alert
+            severity={alertSeverity}
             onClose={() => {
               setAlertMessage("");
               setIsSuspended(false);
             }}
-            sx={isSuspended ? { 
+            sx={isSuspended ? {
               fontSize: '0.95rem',
               '& .MuiAlert-message': { width: '100%' }
             } : {}}
@@ -247,12 +282,12 @@ function LoginForm() {
             type="button"
             disabled={isLoading}
           >
-            <svg 
-              xmlns="http://www.w3.org/2000/svg" 
-              fill="none" 
-              viewBox="0 0 24 24" 
-              strokeWidth={2} 
-              stroke="currentColor" 
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              stroke="currentColor"
               className="w-5 h-5 group-hover:-translate-x-1 transition-transform"
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
@@ -265,7 +300,7 @@ function LoginForm() {
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* Email */}
             <div>
-              <label 
+              <label
                 htmlFor="email"
                 className="block text-md font-bold font-inter text-gray-600"
               >
@@ -278,11 +313,10 @@ function LoginForm() {
                 value={email}
                 onChange={handleInputChange}
                 disabled={isLoading}
-                className={`mt-1 w-full rounded-lg border p-2 focus:outline-none focus:ring-2 bg-[#BAE8E8] ${
-                  submitted && errors.email
-                    ? "border-red-500 focus:ring-red-500 focus:border-red-500"
-                    : "border-[#272343] focus:border-blue-500 focus:ring-blue-500"
-                }`}
+                className={`mt-1 w-full rounded-lg border p-2 focus:outline-none focus:ring-2 bg-[#BAE8E8] ${submitted && errors.email
+                  ? "border-red-500 focus:ring-red-500 focus:border-red-500"
+                  : "border-[#272343] focus:border-blue-500 focus:ring-blue-500"
+                  }`}
                 placeholder="Enter your email"
                 aria-invalid={submitted && !!errors.email}
                 aria-describedby={submitted && errors.email ? "email-error" : undefined}
@@ -313,11 +347,10 @@ function LoginForm() {
                 value={password}
                 onChange={handleInputChange}
                 disabled={isLoading}
-                className={`mt-1 w-full rounded-lg border p-2 focus:outline-none focus:ring-2 bg-[#BAE8E8] ${
-                  submitted && errors.password
-                    ? "border-red-500 focus:ring-red-500 focus:border-red-500"
-                    : "border-[#272343] focus:border-blue-500 focus:ring-blue-500"
-                }`}
+                className={`mt-1 w-full rounded-lg border p-2 focus:outline-none focus:ring-2 bg-[#BAE8E8] ${submitted && errors.password
+                  ? "border-red-500 focus:ring-red-500 focus:border-red-500"
+                  : "border-[#272343] focus:border-blue-500 focus:ring-blue-500"
+                  }`}
                 placeholder="Enter your password"
                 aria-invalid={submitted && !!errors.password}
                 aria-describedby={submitted && errors.password ? "password-error" : undefined}
@@ -381,11 +414,10 @@ function LoginForm() {
             <button
               type="submit"
               disabled={isLoading}
-              className={`block w-full px-6 rounded-md py-2 font-semibold text-white transition ${
-                isLoading 
-                  ? 'bg-gray-400 cursor-not-allowed' 
-                  : 'bg-[#2C275C] hover:bg-[#1b163e] cursor-pointer'
-              }`}
+              className={`block w-full px-6 rounded-md py-2 font-semibold text-white transition ${isLoading
+                ? 'bg-gray-400 cursor-not-allowed'
+                : 'bg-[#2C275C] hover:bg-[#1b163e] cursor-pointer'
+                }`}
             >
               {isLoading ? (
                 <div className="flex items-center justify-center gap-2">
@@ -403,21 +435,19 @@ function LoginForm() {
 
           {/* Extra Links */}
           <p className="mt-6 mb-1 text-center text-sm">
-            <a 
-              href="/Signup" 
-              className={`text-[#272343] font-bold underline hover:underline ${
-                isLoading ? 'pointer-events-none opacity-50' : ''
-              }`}
+            <a
+              href="/Signup"
+              className={`text-[#272343] font-bold underline hover:underline ${isLoading ? 'pointer-events-none opacity-50' : ''
+                }`}
             >
               Don't have an account? Sign up
             </a>
           </p>
           <p className="text-center text-sm">
-            <a 
-              href="/Forget" 
-              className={`text-[#272343] font-bold underline hover:underline ${
-                isLoading ? 'pointer-events-none opacity-50' : ''
-              }`}
+            <a
+              href="/Forget"
+              className={`text-[#272343] font-bold underline hover:underline ${isLoading ? 'pointer-events-none opacity-50' : ''
+                }`}
             >
               Forget Password?
             </a>
@@ -440,7 +470,7 @@ function LoginForm() {
 
           {/* Social Buttons */}
           <div className="flex justify-center lg:justify-end gap-4 mt-4">
-            
+
             {/* Google Login Button - Using GoogleLogin Component */}
             <div className="flex items-center">
               <GoogleLogin

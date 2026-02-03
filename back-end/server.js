@@ -37,7 +37,7 @@ app.use(helmet({
 // API Key
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-app.use(cors()); 
+app.use(cors());
 
 
 // Force HTTPS in production
@@ -108,6 +108,42 @@ app.post("/api/gemini", async (req, res) => {
 });
 
 // ============================================================================
+// HEALTH CHECK & KEEP-ALIVE
+// ============================================================================
+app.get("/api/health", (req, res) => {
+  res.status(200).json({ status: "ok", message: "Server is running" });
+});
+
+// Self-ping to keep Render service alive
+const KEEP_ALIVE_INTERVAL = 14 * 60 * 1000; // 14 minutes
+
+function startKeepAlive() {
+  if (process.env.NODE_ENV === 'production' && process.env.RENDER_EXTERNAL_URL) {
+    console.log("🚀 Keep-alive ping system initialized");
+
+    setInterval(async () => {
+      try {
+        const url = `${process.env.RENDER_EXTERNAL_URL}/api/health`;
+        const response = await fetch(url);
+        if (response.ok) {
+          console.log(`[${new Date().toISOString()}] Keep-alive ping successful`);
+        } else {
+          console.error(`[${new Date().toISOString()}] Keep-alive ping failed: ${response.statusText}`);
+        }
+      } catch (error) {
+        console.error(`[${new Date().toISOString()}] Keep-alive ping error:`, error.message);
+      }
+    }, KEEP_ALIVE_INTERVAL);
+  } else {
+    console.log("ℹ️ Keep-alive system skipped (not in production or RENDER_EXTERNAL_URL not set)");
+  }
+}
+
+// Start the keep-alive system
+startKeepAlive();
+
+
+// ============================================================================
 // LOGIN ENDPOINT
 // ============================================================================
 const loginLimiter = rateLimit({
@@ -152,45 +188,45 @@ app.post("/api/login", loginLimiter, async (req, res) => {
     const user = result.rows[0];
 
     if (!user) {
-      return res.status(401).json({ 
-        status: "error", 
-        message: "Invalid email or password" 
+      return res.status(401).json({
+        status: "error",
+        message: "Invalid email or password"
       });
     }
 
     if (!user.password_hash && user.google_id) {
-      return res.status(401).json({ 
-        status: "error", 
-        message: "This account uses Google login. Please sign in with Google." 
+      return res.status(401).json({
+        status: "error",
+        message: "This account uses Google login. Please sign in with Google."
       });
     }
 
     if (!user.password_hash) {
-      return res.status(401).json({ 
-        status: "error", 
-        message: "Account configuration error. Please contact support." 
+      return res.status(401).json({
+        status: "error",
+        message: "Account configuration error. Please contact support."
       });
     }
 
     if (user.status === 'suspended') {
-      return res.status(403).json({ 
-        status: "suspended", 
-        message: "Your account has been suspended. Please contact support at taratrabaho@gmail.com for assistance." 
+      return res.status(403).json({
+        status: "suspended",
+        message: "Your account has been suspended. Please contact support at taratrabaho@gmail.com for assistance."
       });
     }
 
     const match = await bcrypt.compare(password, user.password_hash);
 
     if (!match) {
-      return res.status(401).json({ 
-        status: "error", 
-        message: "Invalid email or password" 
+      return res.status(401).json({
+        status: "error",
+        message: "Invalid email or password"
       });
     }
 
     const token = jwt.sign(
-      { id: user.user_id, email: user.email, role: user.role }, 
-      SECRET_KEY, 
+      { id: user.user_id, email: user.email, role: user.role },
+      SECRET_KEY,
       { expiresIn: "1h" }
     );
 
@@ -242,8 +278,8 @@ app.post("/api/auto-login", async (req, res) => {
     }
 
     const token = jwt.sign(
-      { id: user.user_id, email: user.email, role: user.role }, 
-      SECRET_KEY, 
+      { id: user.user_id, email: user.email, role: user.role },
+      SECRET_KEY,
       { expiresIn: "1h" }
     );
 
@@ -283,14 +319,14 @@ app.post("/api/verify-otp", async (req, res) => {
     otpAttempts[normalizedEmail] = { count: 0, lockedUntil: 0 };
   }
 
-  const attempts = otpAttempts[normalizedEmail]; 
+  const attempts = otpAttempts[normalizedEmail];
 
   // Check if account is locked
   if (attempts.lockedUntil > Date.now()) {
     const remainingTime = Math.ceil((attempts.lockedUntil - Date.now()) / 60000);
-    return res.status(429).json({ 
-      success: false, 
-      message: `Account locked. Try again in ${remainingTime} minutes.` 
+    return res.status(429).json({
+      success: false,
+      message: `Account locked. Try again in ${remainingTime} minutes.`
     });
   }
 
@@ -304,29 +340,29 @@ app.post("/api/verify-otp", async (req, res) => {
   if (!otpRecord) {
     return res.status(400).json({ success: false, message: "No OTP sent for this email" });
   }
-  
+
   if (Date.now() > otpRecord.expires) {
     delete otpStore[normalizedEmail];
     delete otpAttempts[normalizedEmail];
     return res.status(400).json({ success: false, message: "OTP expired" });
   }
-  
+
   if (otpRecord.otp !== otp) {
     // Increment failed attempts
     attempts.count++;
-    
+
     if (attempts.count >= 3) {
       attempts.lockedUntil = Date.now() + 15 * 60 * 1000; // Lock for 15 minutes
       delete otpStore[normalizedEmail]; // Delete OTP
-      return res.status(429).json({ 
-        success: false, 
-        message: "Too many failed attempts. Account locked for 15 minutes." 
+      return res.status(429).json({
+        success: false,
+        message: "Too many failed attempts. Account locked for 15 minutes."
       });
     }
-    
-    return res.status(400).json({ 
-      success: false, 
-      message: `Invalid OTP. ${3 - attempts.count} attempts remaining.` 
+
+    return res.status(400).json({
+      success: false,
+      message: `Invalid OTP. ${3 - attempts.count} attempts remaining.`
     });
   }
 
@@ -362,18 +398,18 @@ app.post("/api/verify-otp", async (req, res) => {
 
     delete tempUserStore[normalizedEmail];
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: "Account verified and created successfully!",
       userId: Number(result.lastInsertRowid)
     });
   } catch (err) {
     console.error("OTP verification error:", err);
-    
+
     if (err.message.includes("UNIQUE constraint")) {
       return res.status(400).json({ success: false, message: "Email already exists" });
     }
-    
+
     return res.status(500).json({ success: false, message: "Database error during registration" });
   }
 });
@@ -390,11 +426,11 @@ app.post("/api/send-otp", async (req, res) => {
 
   const normalizedEmail = email.toLowerCase().trim();
   const tempUser = tempUserStore[normalizedEmail];
-  
+
   if (!tempUser) {
-    return res.status(400).json({ 
-      success: false, 
-      message: "No pending signup found. Please sign up first." 
+    return res.status(400).json({
+      success: false,
+      message: "No pending signup found. Please sign up first."
     });
   }
 
@@ -502,16 +538,16 @@ app.post("/api/signup", signupLimiter, async (req, res) => {
   const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
 
   if (password.length < 8) {
-    return res.status(400).json({ 
-      status: "error", 
-      message: "Password must be at least 8 characters long" 
+    return res.status(400).json({
+      status: "error",
+      message: "Password must be at least 8 characters long"
     });
   }
-  
+
   if (!passwordRegex.test(password)) {
-    return res.status(400).json({ 
-      status: "error", 
-      message: "Password must contain uppercase, lowercase, number, and special character" 
+    return res.status(400).json({
+      status: "error",
+      message: "Password must contain uppercase, lowercase, number, and special character"
     });
   }
 
@@ -526,12 +562,12 @@ app.post("/api/signup", signupLimiter, async (req, res) => {
 
     if (existingUser) {
       if (existingUser.google_id && (!existingUser.password_hash || existingUser.password_hash === '')) {
-        return res.status(400).json({ 
-          status: "error", 
-          message: "This email is registered with Google. Please sign in with Google instead." 
+        return res.status(400).json({
+          status: "error",
+          message: "This email is registered with Google. Please sign in with Google instead."
         });
       }
-      
+
       return res.status(400).json({ status: "error", message: "Email already exists" });
     }
 
@@ -542,9 +578,9 @@ app.post("/api/signup", signupLimiter, async (req, res) => {
     });
 
     if (usernameResult.rows.length > 0) {
-      return res.status(400).json({ 
-        status: "error", 
-        message: "Username already taken. Please choose a different username." 
+      return res.status(400).json({
+        status: "error",
+        message: "Username already taken. Please choose a different username."
       });
     }
 
@@ -603,7 +639,7 @@ app.post("/api/signup", signupLimiter, async (req, res) => {
     });
   } catch (error) {
     console.error("Signup error:", error);
-    
+
     if (error.response?.body) {
       console.error("SendGrid error:", error.response.body);
       delete tempUserStore[normalizedEmail];
@@ -613,7 +649,7 @@ app.post("/api/signup", signupLimiter, async (req, res) => {
         message: "Failed to send OTP email. Please try again.",
       });
     }
-    
+
     res.status(500).json({ status: "error", message: "Server error" });
   }
 });
@@ -671,7 +707,7 @@ app.delete("/api/users/:user_id", async (req, res) => {
     await db.execute({ sql: 'DELETE FROM admin_saved_jobs WHERE user_id = ?', args: [user_id] });
     await db.execute({ sql: 'DELETE FROM skills WHERE user_id = ?', args: [user_id] });
     await db.execute({ sql: 'DELETE FROM profile_picture WHERE user_id = ?', args: [user_id] });
-    
+
     const result = await db.execute({ sql: 'DELETE FROM user WHERE user_id = ?', args: [user_id] });
 
     if (result.rowsAffected === 0) {
@@ -706,13 +742,13 @@ app.get("/api/jobs", async (req, res) => {
 
 // ADD job
 app.post("/api/jobs", async (req, res) => {
-  const { 
-    title, description, location, min_salary, max_salary, vacantleft, 
-    company, company_email, type, tags, remote 
+  const {
+    title, description, location, min_salary, max_salary, vacantleft,
+    company, company_email, type, tags, remote
   } = req.body;
 
-  if (!title || !description || !location || !min_salary || !max_salary || 
-      !vacantleft || !company || !company_email || !type || !tags) {
+  if (!title || !description || !location || !min_salary || !max_salary ||
+    !vacantleft || !company || !company_email || !type || !tags) {
     return res.status(400).json({ message: "All fields are required." });
   }
 
@@ -723,8 +759,8 @@ app.post("/api/jobs", async (req, res) => {
       sql: `INSERT INTO job (title, description, location, min_salary, max_salary, vacantleft, 
                              company, company_email, type, posted, tags, remote)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: [title, description, location, min_salary, max_salary, vacantleft, 
-             company, company_email, type, posted, tags, remote || 0]
+      args: [title, description, location, min_salary, max_salary, vacantleft,
+        company, company_email, type, posted, tags, remote || 0]
     });
 
     res.status(201).json({
@@ -742,9 +778,9 @@ app.post("/api/jobs", async (req, res) => {
 // UPDATE job
 app.put("/api/jobs/:job_id", async (req, res) => {
   const { job_id } = req.params;
-  const { 
-    title, description, location, min_salary, max_salary, vacantleft, 
-    company, company_email, type, posted, tags, remote 
+  const {
+    title, description, location, min_salary, max_salary, vacantleft,
+    company, company_email, type, posted, tags, remote
   } = req.body;
 
   if (!title || !description || !location || !company || !type || !tags) {
@@ -757,8 +793,8 @@ app.put("/api/jobs/:job_id", async (req, res) => {
             SET title = ?, description = ?, location = ?, min_salary = ?, max_salary = ?, 
                 vacantleft = ?, company = ?, company_email = ?, type = ?, posted = ?, tags = ?, remote = ?
             WHERE job_id = ?`,
-      args: [title, description, location, min_salary, max_salary, vacantleft, 
-             company, company_email, type, posted, tags, remote || 0, job_id]
+      args: [title, description, location, min_salary, max_salary, vacantleft,
+        company, company_email, type, posted, tags, remote || 0, job_id]
     });
 
     if (result.rowsAffected === 0) {
@@ -835,7 +871,7 @@ app.put("/api/profile/:email", async (req, res) => {
                 phone = ?, bio = ?, certification = ?, seniorHigh = ?, undergraduate = ?, postgraduate = ?
             WHERE email = ?`,
       args: [firstname, lastname, gender, birthday, address, phone, bio,
-             certification, seniorHigh, undergraduate, postgraduate, email]
+        certification, seniorHigh, undergraduate, postgraduate, email]
     });
 
     if (result.rowsAffected === 0) {
@@ -917,7 +953,7 @@ app.post('/api/resume/save', upload.single('resume'), async (req, res) => {
     res.json({
       success: true,
       message: 'Resume saved successfully',
-      resumeId: Number(result.lastInsertRowid), 
+      resumeId: Number(result.lastInsertRowid),
       filename: filename,
     });
   } catch (error) {
@@ -958,7 +994,7 @@ app.get('/api/resume/download/:resumeId', async (req, res) => {
     if (!resume) {
       return res.status(404).json({ error: 'Resume not found' });
     }
-    
+
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${resume.filename}"`);
     res.send(Buffer.from(resume.file_data));
@@ -997,7 +1033,7 @@ app.delete('/api/resume/:resumeId', async (req, res) => {
 app.post('/api/chat/save', async (req, res) => {
   try {
     const { userId, chatData, resumeData } = req.body;
-    
+
     if (!userId || !chatData) {
       return res.status(400).json({ error: 'userId and chatData are required' });
     }
@@ -1011,8 +1047,8 @@ app.post('/api/chat/save', async (req, res) => {
       args: [userId, chatDataString, resumeDataString, createdAt]
     });
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: 'Chat history saved successfully',
       chatId: Number(result.lastInsertRowid)
     });
@@ -1027,7 +1063,7 @@ app.put('/api/chat/update/:chatId', async (req, res) => {
   try {
     const { chatId } = req.params;
     const { chatData, resumeData } = req.body;
-    
+
     if (!chatData) {
       return res.status(400).json({ error: 'chatData is required' });
     }
@@ -1045,8 +1081,8 @@ app.put('/api/chat/update/:chatId', async (req, res) => {
       return res.status(404).json({ error: 'Chat not found' });
     }
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: 'Chat history updated successfully',
       chatId: parseInt(chatId)
     });
@@ -1107,7 +1143,7 @@ app.delete('/api/chat/:chatId', async (req, res) => {
 app.post('/api/jobs/recommend', async (req, res) => {
   try {
     const { userId } = req.body;
-    
+
     if (!userId) {
       return res.status(400).json({ error: 'userId is required' });
     }
@@ -1118,7 +1154,7 @@ app.post('/api/jobs/recommend', async (req, res) => {
             ORDER BY timestamp DESC LIMIT 1`,
       args: [userId]
     });
-    
+
     const resumeRow = resumeResult.rows[0];
 
     if (!resumeRow || !resumeRow.resume_data) {
@@ -1154,7 +1190,7 @@ app.post('/api/jobs/recommend', async (req, res) => {
       SELECT job_id, title, description, location, min_salary, max_salary, 
              vacantleft, company, type, posted, tags, remote FROM job
     `);
-    
+
     const jobs = jobsResult.rows;
 
     if (jobs.length === 0) {
@@ -1204,7 +1240,7 @@ app.post('/api/jobs/recommend', async (req, res) => {
 
       const geminiData = await geminiResponse.json();
       const aiOutput = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
-      
+
       console.log('AI Recommendation Output:', aiOutput);
 
       let recommendedJobIds = [];
@@ -1321,11 +1357,11 @@ app.get('/api/stats/:userId', async (req, res) => {
 app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
   try {
     const { userId, jobId, fullName, email, phone, coverLetter, resumeSource, resumeId } = req.body;
-    
+
     if (!userId || !jobId || !fullName || !email || !phone) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Missing required fields' 
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields'
       });
     }
 
@@ -1337,16 +1373,16 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
     const job = jobResult.rows[0];
 
     if (!job) {
-      return res.status(404).json({ 
-        success: false, 
-        error: 'Job not found' 
+      return res.status(404).json({
+        success: false,
+        error: 'Job not found'
       });
     }
 
     if (!job.company_email) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Company email not configured for this job' 
+      return res.status(400).json({
+        success: false,
+        error: 'Company email not configured for this job'
       });
     }
 
@@ -1364,18 +1400,18 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
       const savedResume = resumeResult.rows[0];
 
       if (!savedResume) {
-        return res.status(404).json({ 
-          success: false, 
-          error: 'Resume not found' 
+        return res.status(404).json({
+          success: false,
+          error: 'Resume not found'
         });
       }
 
       resumeData = savedResume.file_data;
       resumeFilename = savedResume.filename;
     } else {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'No resume provided' 
+      return res.status(400).json({
+        success: false,
+        error: 'No resume provided'
       });
     }
 
@@ -1386,7 +1422,7 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
       args: [userId, jobId, fullName, email, phone, coverLetter, resumeFilename, resumeData]
     });
 
-    const applicationId = Number(result.lastInsertRowid); 
+    const applicationId = Number(result.lastInsertRowid);
 
     // Track activity
     await db.execute({
@@ -1492,9 +1528,9 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error in application endpoint:', error.response?.body || error);
-    res.status(500).json({ 
-      success: false, 
-      error: 'Failed to submit application. Please try again.' 
+    res.status(500).json({
+      success: false,
+      error: 'Failed to submit application. Please try again.'
     });
   }
 });
@@ -1504,7 +1540,7 @@ app.post('/api/jobs/apply', upload.single('resume'), async (req, res) => {
 // ============================================================================
 app.get('/api/applications/user/:userId', async (req, res) => {
   const { userId } = req.params;
-  
+
   try {
     const result = await db.execute({
       sql: `SELECT 
@@ -1517,7 +1553,7 @@ app.get('/api/applications/user/:userId', async (req, res) => {
             ORDER BY a.applied_at DESC`,
       args: [userId]
     });
-    
+
     res.json({ success: true, applications: result.rows });
   } catch (err) {
     console.error('Error fetching applications:', err);
@@ -1530,19 +1566,19 @@ app.get('/api/applications/user/:userId', async (req, res) => {
 // ============================================================================
 app.get('/api/applications/resume/:applicationId', async (req, res) => {
   const { applicationId } = req.params;
-  
+
   try {
     const result = await db.execute({
       sql: 'SELECT resume_filename, resume_data FROM application WHERE application_id = ?',
       args: [applicationId]
     });
-    
+
     const row = result.rows[0];
-    
+
     if (!row) {
       return res.status(404).json({ error: 'Resume not found' });
     }
-    
+
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${row.resume_filename}"`);
     res.send(Buffer.from(row.resume_data));
@@ -1559,13 +1595,13 @@ app.get('/api/applications/resume/:applicationId', async (req, res) => {
 // GET saved jobs
 app.get('/api/saved-jobs/:userId', async (req, res) => {
   const { userId } = req.params;
-  
+
   try {
     const result = await db.execute({
       sql: `SELECT saved_job_id, job_id, saved_at FROM saved_jobs WHERE user_id = ? ORDER BY saved_at DESC`,
       args: [userId]
     });
-    
+
     res.json({ success: true, savedJobs: result.rows });
   } catch (err) {
     console.error('Error fetching saved jobs:', err);
@@ -1576,19 +1612,19 @@ app.get('/api/saved-jobs/:userId', async (req, res) => {
 // SAVE a job
 app.post('/api/saved-jobs', async (req, res) => {
   const { userId, jobId } = req.body;
-  
+
   if (!userId || !jobId) {
     return res.status(400).json({ error: 'userId and jobId are required' });
   }
-  
+
   try {
     const result = await db.execute({
       sql: `INSERT INTO saved_jobs (user_id, job_id) VALUES (?, ?)`,
       args: [userId, jobId]
     });
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       message: 'Job saved successfully',
       savedJobId: Number(result.lastInsertRowid)
     });
@@ -1604,17 +1640,17 @@ app.post('/api/saved-jobs', async (req, res) => {
 // UNSAVE a job
 app.delete('/api/saved-jobs/:userId/:jobId', async (req, res) => {
   const { userId, jobId } = req.params;
-  
+
   try {
     const result = await db.execute({
       sql: 'DELETE FROM saved_jobs WHERE user_id = ? AND job_id = ?',
       args: [userId, jobId]
     });
-    
+
     if (result.rowsAffected === 0) {
       return res.status(404).json({ error: 'Saved job not found' });
     }
-    
+
     res.json({ success: true, message: 'Job unsaved successfully' });
   } catch (err) {
     console.error('Error unsaving job:', err);
@@ -1681,19 +1717,19 @@ app.post('/api/profile-picture/upload', profilePictureUpload.single('profilePict
 // Get profile picture
 app.get('/api/profile-picture/:userId', async (req, res) => {
   const { userId } = req.params;
-  
+
   try {
     const result = await db.execute({
       sql: 'SELECT image_data, mime_type FROM profile_picture WHERE user_id = ?',
       args: [userId]
     });
-    
+
     const row = result.rows[0];
-    
+
     if (!row) {
       return res.status(404).json({ error: 'Profile picture not found' });
     }
-    
+
     res.setHeader('Content-Type', row.mime_type);
     res.send(Buffer.from(row.image_data));
   } catch (err) {
@@ -1705,17 +1741,17 @@ app.get('/api/profile-picture/:userId', async (req, res) => {
 // Delete profile picture
 app.delete('/api/profile-picture/:userId', async (req, res) => {
   const { userId } = req.params;
-  
+
   try {
     const result = await db.execute({
       sql: 'DELETE FROM profile_picture WHERE user_id = ?',
       args: [userId]
     });
-    
+
     if (result.rowsAffected === 0) {
       return res.status(404).json({ error: 'Profile picture not found' });
     }
-    
+
     res.json({ success: true, message: 'Profile picture deleted successfully' });
   } catch (err) {
     console.error('Database error:', err);
@@ -1730,13 +1766,13 @@ app.delete('/api/profile-picture/:userId', async (req, res) => {
 // GET skills
 app.get('/api/skills/:userId', async (req, res) => {
   const { userId } = req.params;
-  
+
   try {
     const result = await db.execute({
       sql: `SELECT skill_id, skill_name, created_at FROM skills WHERE user_id = ? ORDER BY created_at DESC`,
       args: [userId]
     });
-    
+
     res.json({ success: true, skills: result.rows });
   } catch (err) {
     console.error('Error fetching skills:', err);
@@ -1747,19 +1783,19 @@ app.get('/api/skills/:userId', async (req, res) => {
 // ADD skill
 app.post('/api/skills', async (req, res) => {
   const { userId, skillName } = req.body;
-  
+
   if (!userId || !skillName) {
     return res.status(400).json({ error: 'userId and skillName are required' });
   }
-  
+
   try {
     const result = await db.execute({
       sql: `INSERT INTO skills (user_id, skill_name) VALUES (?, ?)`,
       args: [userId, skillName.trim()]
     });
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       message: 'Skill added successfully',
       skill: {
         skill_id: Number(result.lastInsertRowid),  // ← Convert BigInt to Number
@@ -1778,17 +1814,17 @@ app.post('/api/skills', async (req, res) => {
 // DELETE skill
 app.delete('/api/skills/:skillId', async (req, res) => {
   const { skillId } = req.params;
-  
+
   try {
     const result = await db.execute({
       sql: 'DELETE FROM skills WHERE skill_id = ?',
       args: [skillId]
     });
-    
+
     if (result.rowsAffected === 0) {
       return res.status(404).json({ error: 'Skill not found' });
     }
-    
+
     res.json({ success: true, message: 'Skill deleted successfully' });
   } catch (err) {
     console.error('Error deleting skill:', err);
@@ -1800,28 +1836,28 @@ app.delete('/api/skills/:skillId', async (req, res) => {
 app.put('/api/skills/bulk/:userId', async (req, res) => {
   const { userId } = req.params;
   const { skills } = req.body;
-  
+
   if (!Array.isArray(skills)) {
     return res.status(400).json({ error: 'skills must be an array' });
   }
-  
+
   try {
     await db.execute({
       sql: 'DELETE FROM skills WHERE user_id = ?',
       args: [userId]
     });
-    
+
     if (skills.length === 0) {
       return res.json({ success: true, message: 'All skills removed' });
     }
-    
+
     for (const skill of skills) {
       await db.execute({
         sql: 'INSERT INTO skills (user_id, skill_name) VALUES (?, ?)',
         args: [userId, skill.trim()]
       });
     }
-    
+
     res.json({ success: true, message: 'Skills updated successfully' });
   } catch (err) {
     console.error('Error updating skills:', err);
@@ -1836,13 +1872,13 @@ app.put('/api/skills/bulk/:userId', async (req, res) => {
 // Track activity
 app.post('/api/analytics/track', async (req, res) => {
   const { userId, activityType } = req.body;
-  
+
   if (!userId || !activityType) {
     return res.status(400).json({ error: 'userId and activityType required' });
   }
-  
+
   const activityDate = new Date().toISOString().split('T')[0];
-  
+
   try {
     await db.execute({
       sql: `INSERT INTO user_activity (user_id, activity_type, activity_date) VALUES (?, ?, ?)`,
@@ -1868,7 +1904,7 @@ app.get('/api/analytics/daily-users', async (req, res) => {
       GROUP BY activity_date
       ORDER BY activity_date ASC
     `);
-    
+
     res.json({ success: true, data: result.rows });
   } catch (err) {
     console.error('Error fetching daily users:', err);
@@ -1888,7 +1924,7 @@ app.get('/api/analytics/resumes', async (req, res) => {
       GROUP BY DATE(created_at)
       ORDER BY date ASC
     `);
-    
+
     res.json({ success: true, data: result.rows });
   } catch (err) {
     console.error('Error fetching resume stats:', err);
@@ -1908,7 +1944,7 @@ app.get('/api/analytics/applications', async (req, res) => {
       GROUP BY DATE(applied_at)
       ORDER BY date ASC
     `);
-    
+
     res.json({ success: true, data: result.rows });
   } catch (err) {
     console.error('Error fetching application stats:', err);
@@ -1929,7 +1965,7 @@ app.get('/api/analytics/matches', async (req, res) => {
       GROUP BY activity_date
       ORDER BY activity_date ASC
     `);
-    
+
     res.json({ success: true, data: result.rows });
   } catch (err) {
     console.error('Error fetching match stats:', err);
@@ -1954,9 +1990,9 @@ app.get('/api/analytics/summary', async (req, res) => {
       FROM application 
       WHERE DATE(applied_at) = date('now')
     `);
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       summary: {
         totalUsers: totalUsersResult.rows[0].count,
         totalResumes: totalResumesResult.rows[0].count,
@@ -1980,9 +2016,9 @@ app.post("/api/auth/google", async (req, res) => {
     const { email, firstname, lastname, googleId, picture, email_verified } = req.body;
 
     if (!email_verified) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Email not verified by Google. Please use a verified Google account." 
+      return res.status(400).json({
+        success: false,
+        message: "Email not verified by Google. Please use a verified Google account."
       });
     }
 
@@ -1995,10 +2031,10 @@ app.post("/api/auth/google", async (req, res) => {
 
     if (user) {
       if (user.status === 'suspended') {
-        return res.status(403).json({ 
+        return res.status(403).json({
           success: false,
           status: "suspended",
-          message: "Your account has been suspended. Please contact support at taratrabaho@gmail.com for assistance." 
+          message: "Your account has been suspended. Please contact support at taratrabaho@gmail.com for assistance."
         });
       }
 
@@ -2016,7 +2052,7 @@ app.post("/api/auth/google", async (req, res) => {
 
     } else {
       const username = email.split('@')[0];
-      
+
       const insertResult = await db.execute({
         sql: `INSERT INTO user (firstname, lastname, username, email, google_id, verified, role, status, password_hash)
               VALUES (?, ?, ?, ?, ?, 1, 'job_seeker', 'approved', '')`,
@@ -2025,7 +2061,7 @@ app.post("/api/auth/google", async (req, res) => {
 
       const userResult = await db.execute({
         sql: 'SELECT * FROM user WHERE user_id = ?',
-        args: [Number(insertResult.lastInsertRowid)] 
+        args: [Number(insertResult.lastInsertRowid)]
       });
 
       user = userResult.rows[0];
@@ -2037,8 +2073,8 @@ app.post("/api/auth/google", async (req, res) => {
     }
 
     const token = jwt.sign(
-      { id: user.user_id, email: user.email, role: user.role }, 
-      SECRET_KEY, 
+      { id: user.user_id, email: user.email, role: user.role },
+      SECRET_KEY,
       { expiresIn: "7d" }
     );
 
@@ -2058,17 +2094,17 @@ app.post("/api/auth/google", async (req, res) => {
 
   } catch (error) {
     console.error("❌ Google auth error:", error);
-    
+
     if (error.message === "Email already exists") {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Email already exists. Please try logging in instead." 
+      return res.status(400).json({
+        success: false,
+        message: "Email already exists. Please try logging in instead."
       });
     }
-    
-    res.status(500).json({ 
-      success: false, 
-      message: "Server error during Google authentication. Please try again." 
+
+    res.status(500).json({
+      success: false,
+      message: "Server error during Google authentication. Please try again."
     });
   }
 });
@@ -2124,21 +2160,21 @@ app.post("/api/forget-password", async (req, res) => {
     const user = result.rows[0];
 
     if (!user) {
-      return res.json({ 
-        success: true, 
-        message: "If this email exists, a reset link has been sent." 
+      return res.json({
+        success: true,
+        message: "If this email exists, a reset link has been sent."
       });
     }
 
     if (user.google_id && (!user.password_hash || user.password_hash === '')) {
-      return res.json({ 
-        success: true, 
-        message: "If this email exists, a reset link has been sent." 
+      return res.json({
+        success: true,
+        message: "If this email exists, a reset link has been sent."
       });
     }
 
     const resetToken = crypto.randomBytes(32).toString('hex');
-    
+
     resetTokenStore[resetToken] = {
       email: normalizedEmail,
       userId: user.user_id,
@@ -2188,16 +2224,16 @@ app.post("/api/forget-password", async (req, res) => {
 
     await sgMail.send(msg);
 
-    res.json({ 
-      success: true, 
-      message: "If this email exists, a reset link has been sent. Please check your inbox." 
+    res.json({
+      success: true,
+      message: "If this email exists, a reset link has been sent. Please check your inbox."
     });
 
   } catch (error) {
     console.error("❌ Error in forget-password:", error);
-    res.status(500).json({ 
-      success: false, 
-      message: "Failed to send reset email. Please try again later." 
+    res.status(500).json({
+      success: false,
+      message: "Failed to send reset email. Please try again later."
     });
   }
 });
@@ -2207,25 +2243,25 @@ app.get("/api/verify-reset-token/:token", (req, res) => {
   const { token } = req.params;
 
   const tokenData = resetTokenStore[token];
-  
+
   if (!tokenData) {
-    return res.status(400).json({ 
-      valid: false, 
-      message: "Invalid or expired reset link. Please request a new one." 
+    return res.status(400).json({
+      valid: false,
+      message: "Invalid or expired reset link. Please request a new one."
     });
   }
 
   if (Date.now() > tokenData.expires) {
     delete resetTokenStore[token];
-    return res.status(400).json({ 
-      valid: false, 
-      message: "Reset link has expired. Please request a new one." 
+    return res.status(400).json({
+      valid: false,
+      message: "Reset link has expired. Please request a new one."
     });
   }
 
-  res.json({ 
-    valid: true, 
-    email: tokenData.email 
+  res.json({
+    valid: true,
+    email: tokenData.email
   });
 });
 
@@ -2234,33 +2270,33 @@ app.post("/api/reset-password", async (req, res) => {
   const { token, password } = req.body;
 
   if (!token || !password) {
-    return res.status(400).json({ 
-      success: false, 
-      message: "Token and password are required" 
+    return res.status(400).json({
+      success: false,
+      message: "Token and password are required"
     });
   }
 
   if (password.length < 6) {
-    return res.status(400).json({ 
-      success: false, 
-      message: "Password must be at least 6 characters long" 
+    return res.status(400).json({
+      success: false,
+      message: "Password must be at least 6 characters long"
     });
   }
 
   const tokenData = resetTokenStore[token];
-  
+
   if (!tokenData) {
-    return res.status(400).json({ 
-      success: false, 
-      message: "Invalid or expired reset link. Please request a new one." 
+    return res.status(400).json({
+      success: false,
+      message: "Invalid or expired reset link. Please request a new one."
     });
   }
 
   if (Date.now() > tokenData.expires) {
     delete resetTokenStore[token];
-    return res.status(400).json({ 
-      success: false, 
-      message: "Reset link has expired. Please request a new one." 
+    return res.status(400).json({
+      success: false,
+      message: "Reset link has expired. Please request a new one."
     });
   }
 
@@ -2273,9 +2309,9 @@ app.post("/api/reset-password", async (req, res) => {
     });
 
     if (result.rowsAffected === 0) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "User not found" 
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
       });
     }
 
@@ -2310,16 +2346,16 @@ app.post("/api/reset-password", async (req, res) => {
 
     await sgMail.send(msg);
 
-    res.json({ 
-      success: true, 
-      message: "Password reset successfully! You can now login with your new password." 
+    res.json({
+      success: true,
+      message: "Password reset successfully! You can now login with your new password."
     });
 
   } catch (error) {
     console.error("❌ Reset password error:", error);
-    res.status(500).json({ 
-      success: false, 
-      message: "Server error. Please try again later." 
+    res.status(500).json({
+      success: false,
+      message: "Server error. Please try again later."
     });
   }
 });
@@ -2328,14 +2364,14 @@ app.post("/api/reset-password", async (req, res) => {
 setInterval(() => {
   const now = Date.now();
   let cleanedCount = 0;
-  
+
   for (const [token, data] of Object.entries(resetTokenStore)) {
     if (now > data.expires) {
       delete resetTokenStore[token];
       cleanedCount++;
     }
   }
-  
+
   if (cleanedCount > 0) {
     console.log(`🧹 Cleaned up ${cleanedCount} expired reset tokens`);
   }
@@ -2345,7 +2381,7 @@ setInterval(() => {
 setInterval(() => {
   const now = Date.now();
   let cleanedCount = 0;
-  
+
   for (const [email, data] of Object.entries(otpAttempts)) {
     // Remove records that have been unlocked for more than 1 hour
     if (data.lockedUntil > 0 && data.lockedUntil < now - 60 * 60 * 1000) {
@@ -2353,7 +2389,7 @@ setInterval(() => {
       cleanedCount++;
     }
   }
-  
+
   if (cleanedCount > 0) {
     console.log(`🧹 Cleaned up ${cleanedCount} old OTP attempt records`);
   }
@@ -2378,17 +2414,17 @@ app.post("/api/check-auth-method", async (req, res) => {
     const user = result.rows[0];
 
     if (!user) {
-      return res.json({ 
+      return res.json({
         isGoogleAccount: false,
-        exists: false 
+        exists: false
       });
     }
 
     const isGoogleOnly = user.google_id && (!user.password_hash || user.password_hash === '');
 
-    res.json({ 
+    res.json({
       isGoogleAccount: isGoogleOnly,
-      exists: true 
+      exists: true
     });
   } catch (err) {
     console.error("DB Error:", err);
@@ -2403,15 +2439,15 @@ app.post("/api/check-auth-method", async (req, res) => {
 // GET admin saved jobs
 app.get('/api/admin-saved-jobs/:userId', async (req, res) => {
   const { userId } = req.params;
-  
+
   console.log('📥 Fetching saved jobs for user:', userId);
-  
+
   try {
     const result = await db.execute({
       sql: `SELECT saved_job_id, job_id, saved_at FROM admin_saved_jobs WHERE user_id = ? ORDER BY saved_at DESC`,
       args: [userId]
     });
-    
+
     console.log('✅ Found saved jobs:', result.rows);
     res.json({ success: true, savedJobs: result.rows });
   } catch (err) {
@@ -2423,24 +2459,24 @@ app.get('/api/admin-saved-jobs/:userId', async (req, res) => {
 // SAVE job (admin)
 app.post('/api/admin-saved-jobs', async (req, res) => {
   const { userId, jobId } = req.body;
-  
+
   if (!userId || !jobId) {
     return res.status(400).json({ error: 'userId and jobId are required' });
   }
-  
+
   console.log('💾 Saving job:', jobId, 'for user:', userId);
-  
+
   try {
     const result = await db.execute({
       sql: `INSERT INTO admin_saved_jobs (user_id, job_id) VALUES (?, ?)`,
       args: [userId, jobId]
     });
-    
+
     console.log('✅ Job saved successfully with ID:', result.lastInsertRowid);
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: 'Job saved successfully',
-      savedJobId: Number(result.lastInsertRowid) 
+      savedJobId: Number(result.lastInsertRowid)
     });
   } catch (err) {
     if (err.message.includes('UNIQUE constraint')) {
@@ -2454,19 +2490,19 @@ app.post('/api/admin-saved-jobs', async (req, res) => {
 // UNSAVE job (admin)
 app.delete('/api/admin-saved-jobs/:userId/:jobId', async (req, res) => {
   const { userId, jobId } = req.params;
-  
+
   console.log('🗑️ Unsaving job:', jobId, 'for user:', userId);
-  
+
   try {
     const result = await db.execute({
       sql: 'DELETE FROM admin_saved_jobs WHERE user_id = ? AND job_id = ?',
       args: [userId, jobId]
     });
-    
+
     if (result.rowsAffected === 0) {
       return res.status(404).json({ error: 'Saved job not found' });
     }
-    
+
     console.log('✅ Job unsaved successfully');
     res.json({ success: true, message: 'Job unsaved successfully' });
   } catch (err) {
