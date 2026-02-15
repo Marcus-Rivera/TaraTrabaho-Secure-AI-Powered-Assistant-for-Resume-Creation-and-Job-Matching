@@ -1116,6 +1116,27 @@ app.get('/api/chat/history/:userId', async (req, res) => {
   }
 });
 
+// DELETE ALL chat history for a user
+app.delete('/api/chat/all/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const result = await db.execute({
+      sql: 'DELETE FROM chathistory WHERE user_id = ?',
+      args: [userId]
+    });
+
+    if (result.rowsAffected === 0) {
+      return res.status(404).json({ message: 'No chat history found to delete' });
+    }
+
+    res.json({ success: true, message: 'All chat history deleted successfully' });
+  } catch (error) {
+    console.error('Error in delete all chat endpoint:', error);
+    res.status(500).json({ error: 'Server error while deleting all chat history' });
+  }
+});
+
 // DELETE chat history
 app.delete('/api/chat/:chatId', async (req, res) => {
   try {
