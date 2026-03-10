@@ -14,11 +14,8 @@ const ResumeSection = () => {
   const { userData, loading, sessionError } = useSessionCheck();
   const [searchTerm, setSearchTerm] = useState("");
   const [openMenu, setOpenMenu] = useState(null);
-  const [resumes, setResumes] = useState(() => {
-    const cached = sessionStorage.getItem('user_resumes');
-    return cached ? JSON.parse(cached) : [];
-  });
-  const [isLoading, setIsLoading] = useState(() => !sessionStorage.getItem('user_resumes'));
+  const [resumes, setResumes] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [previewResume, setPreviewResume] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -33,11 +30,11 @@ const ResumeSection = () => {
 
       try {
         setIsLoading(true);
-
+        
         // First, get user_id from profile
         const profileResponse = await fetch(`${API_BASE}/api/profile/${userData.email}`);
         const userProfile = await profileResponse.json();
-
+        
         if (!userProfile || !userProfile.user_id) {
           throw new Error("Could not retrieve user ID");
         }
@@ -48,7 +45,6 @@ const ResumeSection = () => {
 
         if (resumeResponse.ok) {
           setResumes(resumeData);
-          sessionStorage.setItem('user_resumes', JSON.stringify(resumeData));
         } else {
           throw new Error(resumeData.error || "Failed to fetch resumes");
         }
@@ -76,14 +72,14 @@ const ResumeSection = () => {
     try {
       setPreviewLoading(true);
       const response = await fetch(`${API_BASE}/api/resume/download/${resumeId}`);
-
+      
       if (!response.ok) {
         throw new Error("Failed to load resume preview");
       }
 
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
-
+      
       setPreviewResume({ url, filename });
       setOpenMenu(null);
     } catch (err) {
@@ -104,7 +100,7 @@ const ResumeSection = () => {
   const handleDownload = async (resumeId, filename) => {
     try {
       const response = await fetch(`${API_BASE}/api/resume/download/${resumeId}`);
-
+      
       if (!response.ok) {
         throw new Error("Failed to download resume");
       }
@@ -118,7 +114,7 @@ const ResumeSection = () => {
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
-
+      
       setOpenMenu(null);
     } catch (err) {
       console.error("Error downloading resume:", err);
@@ -140,7 +136,7 @@ const ResumeSection = () => {
         setResumes(resumes.filter(resume => resume.resume_id !== deleteConfirm.resumeId));
         setOpenMenu(null);
         setDeleteConfirm(null);
-
+        
         // Show success alert
         setSuccessMsg("Resume deleted successfully!");
         setShowSuccessAlert(true);
@@ -157,10 +153,10 @@ const ResumeSection = () => {
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
+    return date.toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric' 
     });
   };
 
@@ -179,7 +175,7 @@ const ResumeSection = () => {
   // User not logged in
   if (!userData) return null;
 
-
+  
 
   return (
     <div className="flex-1 p-5 pt-10">
@@ -194,7 +190,7 @@ const ResumeSection = () => {
         <div>
           <h2 className="text-xl md:text-3xl font-bold text-[#272343]">Resumes</h2>
           <p className="text-[#272343]/77 text-sm">
-            {resumes.length > 0
+            {resumes.length > 0 
               ? `You have ${resumes.length} resume${resumes.length > 1 ? 's' : ''} available!`
               : "No resumes yet. Create one in the Career Bot!"}
           </p>
@@ -226,13 +222,11 @@ const ResumeSection = () => {
           filteredResumes.map((resume, index) => (
             <div
               key={resume.resume_id}
-              onDoubleClick={() => handlePreview(resume.resume_id, resume.filename)}
-              className="flex justify-between items-center bg-[#E6F6F6] border rounded px-4 py-3 relative transition-all duration-200 hover:shadow-md cursor-pointer group"
-              title="Double-click to preview"
+              className="flex justify-between items-center bg-[#E6F6F6] border rounded px-4 py-3 relative transition-all duration-200 hover:shadow-md"
             >
               <div className="flex items-center gap-3">
-                <DescriptionIcon className="text-black transition-transform group-hover:scale-110" />
-                <span className="font-semibold text-sm md:text-lg text-[#272343] group-hover:text-blue-700 transition-colors">
+                <DescriptionIcon className="text-black" />
+                <span className="font-semibold text-sm md:text-lg text-[#272343]">
                   {resume.filename}
                 </span>
               </div>
@@ -250,25 +244,25 @@ const ResumeSection = () => {
                 {/* Dropdown Menu */}
                 {openMenu === index && (
                   <div className="absolute right-4 top-12 bg-white shadow-lg border rounded w-32 z-10">
-                    <button
+                    <button 
                       onClick={() => handlePreview(resume.resume_id, resume.filename)}
                       className="flex items-center gap-2 w-full px-4 py-2 text-left text-sm text-blue-600 hover:bg-gray-100 cursor-pointer"
                     >
                       <VisibilityIcon fontSize="small" />
                       Preview
                     </button>
-                    <button
+                    <button 
                       onClick={() => handleDownload(resume.resume_id, resume.filename)}
                       className="flex items-center gap-2 w-full px-4 py-2 text-left text-sm text-green-500 hover:bg-gray-100 cursor-pointer"
                     >
                       <DownloadIcon fontSize="small" />
                       Download
                     </button>
-                    <button
+                    <button 
                       onClick={() => {
-                        setDeleteConfirm({
-                          resumeId: resume.resume_id,
-                          filename: resume.filename
+                        setDeleteConfirm({ 
+                          resumeId: resume.resume_id, 
+                          filename: resume.filename 
                         });
                         setOpenMenu(null);
                       }}
@@ -352,18 +346,18 @@ const ResumeSection = () => {
           <div className="bg-white rounded-lg max-w-md w-full p-6 shadow-xl">
             {/* Warning Icon */}
             <div className="flex items-center justify-center w-12 h-12 mx-auto mb-4 bg-red-100 rounded-full">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="w-6 h-6 text-red-600"
-                fill="none"
-                viewBox="0 0 24 24"
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                className="w-6 h-6 text-red-600" 
+                fill="none" 
+                viewBox="0 0 24 24" 
                 stroke="currentColor"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                <path 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                  strokeWidth={2} 
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" 
                 />
               </svg>
             </div>

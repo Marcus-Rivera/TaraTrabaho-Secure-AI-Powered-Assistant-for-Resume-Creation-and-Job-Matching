@@ -78,29 +78,16 @@ const tempUserStore = {};
 app.post("/api/gemini", async (req, res) => {
   try {
     if (!GEMINI_API_KEY) {
-      console.error("❌ GEMINI_API_KEY is not defined");
       return res.status(500).json({ error: "GEMINI_API_KEY is not defined" });
     }
 
     const { prompt } = req.body;
-    if (!prompt || typeof prompt !== 'string' || prompt.trim() === '') {
-      console.error("❌ Invalid prompt:", prompt);
-      return res.status(400).json({ error: "Valid prompt is required" });
+    if (!prompt) {
+      return res.status(400).json({ error: "Prompt is required" });
     }
-
-    // Input validation - max length
-    const MAX_PROMPT_LENGTH = 10000;
-    if (prompt.length > MAX_PROMPT_LENGTH) {
-      console.error("❌ Prompt too long:", prompt.length);
-      return res.status(400).json({
-        error: `Prompt too long (max ${MAX_PROMPT_LENGTH} characters)`
-      });
-    }
-
-    console.log("📤 Sending to Gemini:", prompt.substring(0, 100) + "...");
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -110,46 +97,13 @@ app.post("/api/gemini", async (req, res) => {
       }
     );
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("❌ Gemini API HTTP Error:", response.status, errorText);
-      return res.status(response.status).json({
-        error: `Gemini API returned ${response.status}`,
-        details: errorText
-      });
-    }
-
     const data = await response.json();
-    console.log("📥 Gemini Response Status:", response.status);
+    const output = data?.candidates?.[0]?.content?.parts?.[0]?.text || "No response from Gemini";
 
-    // Check for API-level errors
-    if (data.error) {
-      console.error("❌ Gemini API Error:", data.error);
-      return res.status(500).json({
-        error: `Gemini API Error: ${data.error.message || 'Unknown error'}`,
-        details: data.error
-      });
-    }
-
-    const output = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!output) {
-      console.error("❌ No text in Gemini response:", JSON.stringify(data, null, 2));
-      return res.status(500).json({
-        error: "No response text from Gemini",
-        debug: data
-      });
-    }
-
-    console.log("✅ Gemini response successful:", output.substring(0, 100) + "...");
     res.json({ output });
-
   } catch (err) {
-    console.error("❌ Gemini API Exception:", err);
-    res.status(500).json({
-      error: "Something went wrong with Gemini API",
-      message: err.message
-    });
+    console.error("Gemini API Error:", err);
+    res.status(500).json({ error: "Something went wrong with Gemini API" });
   }
 });
 
@@ -194,7 +148,7 @@ startKeepAlive();
 // ============================================================================
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 1000,
+  max: 5,
   message: { message: 'Too many login attempts, try again in 15 minutes' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -202,13 +156,13 @@ const loginLimiter = rateLimit({
 
 const signupLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: 1000,
+  max: 3,
   message: { message: 'Too many signup attempts, try again later' },
 });
 
 const otpLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 1000,
+  max: 5,
   message: { message: 'Too many OTP requests, try again later' },
 });
 
