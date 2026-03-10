@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Card,
   CardContent,
@@ -40,11 +41,14 @@ import UploadFileIcon from '@mui/icons-material/UploadFile';
 import DescriptionIcon from '@mui/icons-material/Description';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
+import InfoIcon from '@mui/icons-material/Info';
 import { useSessionCheck } from "../useSessionCheck";
 import { API_BASE } from "./config/api";
 
 const JobListingsSection = () => {
   const { userData } = useSessionCheck();
+  const routeLocation = useLocation();
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [location, setLocation] = useState('');
   const [jobType, setJobType] = useState('all');
@@ -53,11 +57,16 @@ const JobListingsSection = () => {
   const [applyModalOpen, setApplyModalOpen] = useState(false);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [selectedJob, setSelectedJob] = useState(null);
-  const [jobs, setJobs] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [jobs, setJobs] = useState(() => {
+    const cached = sessionStorage.getItem('job_listings');
+    return cached ? JSON.parse(cached) : [];
+  });
+  const [loading, setLoading] = useState(() => !sessionStorage.getItem('job_listings'));
   const [error, setError] = useState('');
+  const [hasAutoApplied, setHasAutoApplied] = useState(false);
   const [userResumes, setUserResumes] = useState([]);
   const [resumeOption, setResumeOption] = useState('upload'); // 'upload' or 'saved'
+  const [coverLetterOption, setCoverLetterOption] = useState('text'); // 'text' or 'upload'
   const [selectedResumeId, setSelectedResumeId] = useState('');
   const [emailError, setEmailError] = useState('');
   const [applicationData, setApplicationData] = useState({
@@ -66,6 +75,7 @@ const JobListingsSection = () => {
     phone: '',
     coverLetter: '',
     resume: null,
+    coverLetterFile: null,
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -81,13 +91,13 @@ const JobListingsSection = () => {
       try {
         setLoading(true);
         const response = await fetch(`${API_BASE}/api/jobs`);
-        
+
         if (!response.ok) {
           throw new Error('Failed to fetch jobs');
         }
-        
+
         const data = await response.json();
-        
+
         // Format the data to match our component structure
         const formattedJobs = data.map(job => ({
           id: job.job_id,
@@ -104,8 +114,9 @@ const JobListingsSection = () => {
           min_salary: job.min_salary,
           max_salary: job.max_salary,
         }));
-        
+
         setJobs(formattedJobs);
+        sessionStorage.setItem('job_listings', JSON.stringify(formattedJobs));
         setError('');
       } catch (err) {
         console.error('Error fetching jobs:', err);
@@ -126,7 +137,7 @@ const JobListingsSection = () => {
       try {
         const profileResponse = await fetch(`${API_BASE}/api/profile/${userData.email}`);
         const userProfile = await profileResponse.json();
-        
+
         if (!userProfile || !userProfile.user_id) return;
 
         const resumeResponse = await fetch(`${API_BASE}/api/resume/user/${userProfile.user_id}`);
@@ -151,7 +162,7 @@ const JobListingsSection = () => {
       try {
         const profileResponse = await fetch(`${API_BASE}/api/profile/${userData.email}`);
         const userProfile = await profileResponse.json();
-        
+
         if (!userProfile || !userProfile.user_id) return;
 
         const response = await fetch(`${API_BASE}/api/saved-jobs/${userProfile.user_id}`);
@@ -169,6 +180,24 @@ const JobListingsSection = () => {
 
     fetchSavedJobs();
   }, [userData]);
+
+  // Handle auto-apply from Dashboard
+  useEffect(() => {
+    if (!loading && jobs.length > 0 && routeLocation.state?.selectedJobId && !hasAutoApplied) {
+      const jobIdToApply = routeLocation.state.selectedJobId;
+      const jobMatch = jobs.find(j => j.id === jobIdToApply);
+
+      if (jobMatch) {
+        console.log("Auto-applying to job:", jobMatch.title);
+        setSelectedJob(jobMatch);
+        setApplyModalOpen(true);
+        setHasAutoApplied(true);
+
+        // Clear the state so it doesn't re-open on refresh
+        navigate(routeLocation.pathname, { replace: true, state: {} });
+      }
+    }
+  }, [loading, jobs, routeLocation.state, hasAutoApplied, navigate, routeLocation.pathname]);
 
 
   const handleCloseSnackbar = (event, reason) => {
@@ -189,31 +218,31 @@ const JobListingsSection = () => {
   const validateEmail = (email) => {
     // Basic email regex pattern
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    
+
     if (!email) {
       return 'Email is required';
     }
-    
+
     if (!emailRegex.test(email)) {
       return 'Please enter a valid email address';
     }
-    
+
     // Additional checks for common mistakes
     if (email.includes('..')) {
       return 'Email cannot contain consecutive dots';
     }
-    
+
     if (email.startsWith('.') || email.endsWith('.')) {
       return 'Email cannot start or end with a dot';
     }
-    
+
     return ''; // No error
   };
 
   const handleEmailChange = (e) => {
     const email = e.target.value;
     setApplicationData(prev => ({ ...prev, email }));
-    
+
     // Validate email on change
     if (email) {
       const error = validateEmail(email);
@@ -221,50 +250,50 @@ const JobListingsSection = () => {
     } else {
       setEmailError('');
     }
-};
+  };
 
   const validatePDF = (file) => {
     return new Promise((resolve, reject) => {
       // Check file extension
       const validExtensions = ['pdf'];
       const fileExtension = file.name.split('.').pop().toLowerCase();
-      
+
       if (!validExtensions.includes(fileExtension)) {
         reject(new Error('Only PDF files are allowed'));
         return;
       }
-      
+
       // Check MIME type
       if (file.type !== 'application/pdf') {
         reject(new Error('Invalid file type. Only PDF files are accepted'));
         return;
       }
-      
+
       // Check file size (5MB limit)
       const maxSize = 5 * 1024 * 1024;
       if (file.size > maxSize) {
         reject(new Error('File size must be less than 5MB'));
         return;
       }
-      
+
       // Verify PDF signature by reading first few bytes
       const reader = new FileReader();
       reader.onload = (e) => {
         const arr = new Uint8Array(e.target.result);
         const header = String.fromCharCode.apply(null, arr.slice(0, 5));
-        
+
         if (header !== '%PDF-') {
           reject(new Error('Invalid PDF file. The file appears to be corrupted or not a valid PDF'));
           return;
         }
-        
+
         resolve(true);
       };
-      
+
       reader.onerror = () => {
         reject(new Error('Failed to read file'));
       };
-      
+
       // Read only first 5 bytes to check PDF signature
       reader.readAsArrayBuffer(file.slice(0, 5));
     });
@@ -279,7 +308,7 @@ const JobListingsSection = () => {
     try {
       const profileResponse = await fetch(`${API_BASE}/api/profile/${userData.email}`);
       const userProfile = await profileResponse.json();
-      
+
       if (!userProfile || !userProfile.user_id) {
         showSnackbar('User profile not found', 'error');
         return;
@@ -335,10 +364,17 @@ const JobListingsSection = () => {
     setDetailsModalOpen(true);
   };
 
+  const handleBackToDetails = () => {
+    if (isSubmitting) return;
+    setApplyModalOpen(false);
+    setDetailsModalOpen(true);
+  };
+
   const handleCloseApplyModal = () => {
     if (isSubmitting) return;
     setApplyModalOpen(false);
     setResumeOption('upload');
+    setCoverLetterOption('text');
     setSelectedResumeId('');
     setEmailError('');
     setApplicationData({
@@ -347,6 +383,7 @@ const JobListingsSection = () => {
       phone: '',
       coverLetter: '',
       resume: null,
+      coverLetterFile: null,
     });
   };
 
@@ -366,7 +403,7 @@ const JobListingsSection = () => {
 
       // Get user ID from userData
       const userId = userData?.user_id || userData?.id;
-      
+
       if (!userId) {
         showSnackbar('Please log in to apply for jobs', 'error');
         setIsSubmitting(false);
@@ -407,7 +444,14 @@ const JobListingsSection = () => {
       formData.append('fullName', applicationData.fullName);
       formData.append('email', applicationData.email);
       formData.append('phone', applicationData.phone);
-      formData.append('coverLetter', applicationData.coverLetter);
+      formData.append('coverLetterSource', coverLetterOption);
+
+      if (coverLetterOption === 'text') {
+        formData.append('coverLetter', applicationData.coverLetter);
+      } else if (applicationData.coverLetterFile) {
+        formData.append('coverLetterFile', applicationData.coverLetterFile);
+      }
+
       formData.append('resumeSource', resumeOption);
 
       if (resumeOption === 'upload') {
@@ -442,46 +486,61 @@ const JobListingsSection = () => {
 
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
-    
+
     if (!file) return;
-    
+
     try {
       // Validate the PDF
       await validatePDF(file);
-      
+
       // If validation passes, set the file
       setApplicationData(prev => ({ ...prev, resume: file }));
       showSnackbar('Resume uploaded successfully', 'success');
-      
+
     } catch (error) {
       // Show error to user
       showSnackbar(error.message, 'error');
-      
+
       // Clear the file input
       e.target.value = '';
       setApplicationData(prev => ({ ...prev, resume: null }));
     }
   };
 
+  const handleCoverLetterFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    try {
+      await validatePDF(file);
+      setApplicationData(prev => ({ ...prev, coverLetterFile: file }));
+      showSnackbar('Cover letter PDF uploaded', 'success');
+    } catch (error) {
+      showSnackbar(error.message, 'error');
+      e.target.value = '';
+      setApplicationData(prev => ({ ...prev, coverLetterFile: null }));
+    }
+  };
+
   const filteredJobs = useMemo(() => {
     return jobs.filter(job => {
       const matchesSearch = job.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          job.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          job.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()));
+        job.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        job.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()));
       const matchesLocation = location === '' || job.location.toLowerCase().includes(location.toLowerCase());
       const matchesType = jobType === 'all' || job.type === jobType;
       const matchesTab = tabValue === 0 || (tabValue === 1 && savedJobs.includes(job.id));
-      
+
       return matchesSearch && matchesLocation && matchesType && matchesTab;
     });
   }, [jobs, searchTerm, location, jobType, tabValue, savedJobs]);
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric' 
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
     });
   };
 
@@ -498,9 +557,9 @@ const JobListingsSection = () => {
               <p className="text-gray-600 font-medium mb-2">{job.company}</p>
               <div className="flex flex-wrap gap-2 mb-3">
                 {job.tags.map((tag, index) => (
-                  <Chip 
-                    key={index} 
-                    label={tag} 
+                  <Chip
+                    key={index}
+                    label={tag}
                     size="small"
                     sx={{
                       backgroundColor: '#BAE8E8',
@@ -513,7 +572,7 @@ const JobListingsSection = () => {
               </div>
             </div>
           </div>
-          <IconButton 
+          <IconButton
             onClick={() => toggleSaveJob(job.id)}
             sx={{ color: savedJobs.includes(job.id) ? '#FBDA23' : '#272343' }}
           >
@@ -546,7 +605,7 @@ const JobListingsSection = () => {
           </div>
         </div>
 
-        <div className="flex gap-2 items-center">   
+        <div className="flex gap-2 items-center">
           <Button
             variant="contained"
             onClick={() => handleApplyClick(job)}
@@ -577,8 +636,8 @@ const JobListingsSection = () => {
             View Details
           </Button>
           {job.remote && (
-            <Chip 
-              label="Remote Available" 
+            <Chip
+              label="Remote Available"
               size="small"
               sx={{
                 backgroundColor: '#2ECC71',
@@ -703,8 +762,8 @@ const JobListingsSection = () => {
 
       {/* Tabs */}
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-        <Tabs 
-          value={tabValue} 
+        <Tabs
+          value={tabValue}
           onChange={(e, newValue) => setTabValue(newValue)}
           sx={{
             '& .MuiTab-root': {
@@ -733,8 +792,8 @@ const JobListingsSection = () => {
             <WorkIcon sx={{ fontSize: 60, color: '#BAE8E8', mb: 2 }} />
             <h3 className="text-xl font-bold text-[#272343] mb-2">No jobs found</h3>
             <p className="text-gray-600">
-              {tabValue === 1 
-                ? "You haven't saved any jobs yet" 
+              {tabValue === 1
+                ? "You haven't saved any jobs yet"
                 : "Try adjusting your search or filters"}
             </p>
           </Card>
@@ -742,15 +801,38 @@ const JobListingsSection = () => {
       </div>
 
       {/* Apply Modal */}
-      <Dialog 
-        open={applyModalOpen} 
+      <Dialog
+        open={applyModalOpen}
         onClose={handleCloseApplyModal}
         maxWidth="md"
         fullWidth
       >
         <DialogTitle sx={{ backgroundColor: '#BAE8E8', color: '#272343', fontWeight: 'bold' }}>
           <div className="flex justify-between items-center">
-            <span>Apply for {selectedJob?.title}</span>
+            <div className="flex items-center gap-4">
+              <IconButton
+                onClick={handleBackToDetails}
+                size="small"
+                sx={{
+                  color: '#272343',
+                  backgroundColor: 'rgba(255,255,255,0.3)',
+                  '&:hover': { backgroundColor: 'rgba(255,255,255,0.5)' }
+                }}
+                title="View Job Details"
+              >
+                <InfoIcon fontSize="small" />
+              </IconButton>
+              <div className="flex items-center gap-2">
+                <span>Apply for {selectedJob?.title}</span>
+                <IconButton
+                  onClick={() => toggleSaveJob(selectedJob?.id)}
+                  size="small"
+                  sx={{ color: savedJobs.includes(selectedJob?.id) ? '#FBDA23' : '#272343' }}
+                >
+                  {savedJobs.includes(selectedJob?.id) ? <BookmarkIcon /> : <BookmarkBorderIcon />}
+                </IconButton>
+              </div>
+            </div>
             <IconButton onClick={handleCloseApplyModal}>
               <CloseIcon />
             </IconButton>
@@ -760,7 +842,7 @@ const JobListingsSection = () => {
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
             {selectedJob?.company} • {selectedJob?.location}
           </Typography>
-          
+
           <TextField
             fullWidth
             label="Full Name"
@@ -769,7 +851,7 @@ const JobListingsSection = () => {
             sx={{ mb: 2 }}
             required
           />
-          
+
           <TextField
             fullWidth
             label="Email Address"
@@ -799,26 +881,66 @@ const JobListingsSection = () => {
               ),
             }}
           />
-          
+
           <TextField
             fullWidth
             label="Phone Number"
             value={applicationData.phone}
             onChange={(e) => setApplicationData(prev => ({ ...prev, phone: e.target.value }))}
-            sx={{ mb: 2 }}
+            sx={{ mb: 3 }}
             required
           />
-          
-          <TextField
-            fullWidth
-            label="Cover Letter"
-            multiline
-            rows={4}
-            value={applicationData.coverLetter}
-            onChange={(e) => setApplicationData(prev => ({ ...prev, coverLetter: e.target.value }))}
-            placeholder="Tell us why you're a great fit for this role..."
-            sx={{ mb: 3 }}
-          />
+
+          <Divider sx={{ mb: 3 }} />
+
+          {/* Cover Letter Selection */}
+          <FormControl component="fieldset" sx={{ mb: 2, width: '100%' }}>
+            <FormLabel component="legend" sx={{ fontWeight: 'bold', color: '#272343', mb: 1 }}>
+              Cover Letter
+            </FormLabel>
+            <RadioGroup
+              row
+              value={coverLetterOption}
+              onChange={(e) => setCoverLetterOption(e.target.value)}
+              sx={{ mb: 2 }}
+            >
+              <FormControlLabel value="text" control={<Radio sx={{ color: '#FBDA23', '&.Mui-checked': { color: '#FBDA23' } }} />} label="Write Message" />
+              <FormControlLabel value="upload" control={<Radio sx={{ color: '#FBDA23', '&.Mui-checked': { color: '#FBDA23' } }} />} label="Upload PDF" />
+            </RadioGroup>
+
+            {coverLetterOption === 'text' ? (
+              <TextField
+                fullWidth
+                label="Cover Letter Message"
+                multiline
+                rows={4}
+                value={applicationData.coverLetter}
+                onChange={(e) => setApplicationData(prev => ({ ...prev, coverLetter: e.target.value }))}
+                placeholder="Tell us why you're a great fit for this role..."
+              />
+            ) : (
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-[#FBDA23] transition-colors bg-gray-50">
+                <input
+                  type="file"
+                  accept=".pdf"
+                  onChange={handleCoverLetterFileChange}
+                  className="hidden"
+                  id="cover-letter-upload"
+                />
+                <label htmlFor="cover-letter-upload" className="cursor-pointer flex flex-col items-center gap-2">
+                  <UploadFileIcon sx={{ fontSize: 40, color: applicationData.coverLetterFile ? '#2ECC71' : '#gray-400' }} />
+                  <Typography variant="body2" sx={{ fontWeight: 'bold', color: '#272343' }}>
+                    {applicationData.coverLetterFile ? applicationData.coverLetterFile.name : 'Upload Cover Letter (PDF)'}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Maximum size: 5MB
+                  </Typography>
+                </label>
+              </div>
+            )}
+          </FormControl>
+
+          <Divider sx={{ mb: 3, mt: 1 }} />
 
           {/* Resume Selection */}
           <FormControl component="fieldset" sx={{ mb: 2 }}>
@@ -833,14 +955,14 @@ const JobListingsSection = () => {
                 setSelectedResumeId('');
               }}
             >
-              <FormControlLabel 
-                value="upload" 
-                control={<Radio sx={{ color: '#FBDA23', '&.Mui-checked': { color: '#FBDA23' } }} />} 
-                label="Upload New Resume" 
+              <FormControlLabel
+                value="upload"
+                control={<Radio sx={{ color: '#FBDA23', '&.Mui-checked': { color: '#FBDA23' } }} />}
+                label="Upload New Resume"
               />
-              <FormControlLabel 
-                value="saved" 
-                control={<Radio sx={{ color: '#FBDA23', '&.Mui-checked': { color: '#FBDA23' } }} />} 
+              <FormControlLabel
+                value="saved"
+                control={<Radio sx={{ color: '#FBDA23', '&.Mui-checked': { color: '#FBDA23' } }} />}
                 label={`Choose from My Resumes (${userResumes.length})`}
                 disabled={userResumes.length === 0}
               />
@@ -933,9 +1055,9 @@ const JobListingsSection = () => {
             variant="contained"
             disabled={
               isSubmitting ||
-              !applicationData.fullName || 
+              !applicationData.fullName ||
               !applicationData.email ||
-              !!emailError | 
+              !!emailError |
               !applicationData.phone ||
               (resumeOption === 'upload' && !applicationData.resume) ||
               (resumeOption === 'saved' && !selectedResumeId)
@@ -960,8 +1082,8 @@ const JobListingsSection = () => {
       </Dialog>
 
       {/* Job Details Modal */}
-      <Dialog 
-        open={detailsModalOpen} 
+      <Dialog
+        open={detailsModalOpen}
         onClose={handleCloseDetailsModal}
         maxWidth="md"
         fullWidth
@@ -993,9 +1115,9 @@ const JobListingsSection = () => {
 
               <div className="flex flex-wrap gap-2 mb-4">
                 {selectedJob.tags.map((tag, index) => (
-                  <Chip 
-                    key={index} 
-                    label={tag} 
+                  <Chip
+                    key={index}
+                    label={tag}
                     sx={{
                       backgroundColor: '#BAE8E8',
                       color: '#272343',
@@ -1098,7 +1220,7 @@ const JobListingsSection = () => {
           </Button>
         </DialogActions>
       </Dialog>
-       <Snackbar
+      <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
         onClose={handleCloseSnackbar}

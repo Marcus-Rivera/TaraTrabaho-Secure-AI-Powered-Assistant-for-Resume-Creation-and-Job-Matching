@@ -72,8 +72,35 @@ const ProfileSection = () => {
       });
   };
 
+  // Load profile data with caching
   useEffect(() => {
     if (userData?.email) {
+      // Check for cached profile data first
+      const cachedProfile = sessionStorage.getItem(`userProfile_${userData.email}`);
+      if (cachedProfile) {
+        try {
+          const data = JSON.parse(cachedProfile);
+          setFormData({
+            firstname: data.firstname || "",
+            lastname: data.lastname || "",
+            gender: data.gender || "",
+            birthday: data.birthday || "",
+            address: data.address || "",
+            phone: data.phone || "",
+            bio: data.bio || "",
+            certification: data.certification || "",
+            seniorHigh: data.seniorHigh || "",
+            undergraduate: data.undergraduate || "",
+            postgraduate: data.postgraduate || "",
+          });
+          setOriginalData(data);
+          if (data.user_id) loadProfilePicture(data.user_id);
+          // Still fetch in background to ensure data is fresh
+        } catch (e) {
+          console.error("Error parsing cached profile:", e);
+        }
+      }
+
       fetch(`${API_BASE}/api/profile/${userData.email}`)
         .then((res) => res.json())
         .then((data) => {
@@ -92,6 +119,7 @@ const ProfileSection = () => {
               postgraduate: data.postgraduate || "",
             });
             setOriginalData(data);
+            sessionStorage.setItem(`userProfile_${userData.email}`, JSON.stringify(data));
             if (data.user_id) loadProfilePicture(data.user_id);
           }
         })

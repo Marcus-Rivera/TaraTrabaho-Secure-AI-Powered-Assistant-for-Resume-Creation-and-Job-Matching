@@ -147,6 +147,10 @@ function LoginForm() {
       }
 
       if (response.ok && data.success) {
+        //Clear all storage before starting a new session to prevent data leakage
+        sessionStorage.clear();
+        localStorage.clear();
+
         sessionStorage.setItem("token", data.token);
         window.dispatchEvent(new Event('tokenUpdated'));
         setEmail("");
@@ -206,6 +210,10 @@ function LoginForm() {
       const data = await response.json();
 
       if (data.success) {
+        // ✅ CRITICAL: Clear all storage before starting a new session to prevent data leakage
+        sessionStorage.clear();
+        localStorage.clear();
+
         sessionStorage.setItem("token", data.token);
         window.dispatchEvent(new Event('tokenUpdated'));
         console.log("✅ Google login successful!");

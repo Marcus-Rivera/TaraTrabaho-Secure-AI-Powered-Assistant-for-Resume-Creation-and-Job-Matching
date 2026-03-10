@@ -4,11 +4,11 @@ import StarIcon from '@mui/icons-material/Star';
 import WorkIcon from '@mui/icons-material/Work';
 import BusinessIcon from '@mui/icons-material/Business';
 import RefreshIcon from '@mui/icons-material/Refresh';
-import { 
-  CircularProgress, 
-  Alert, 
-  Card, 
-  CardContent, 
+import {
+  CircularProgress,
+  Alert,
+  Card,
+  CardContent,
   Chip,
   Button,
   Skeleton,
@@ -22,17 +22,23 @@ const DashboardSection = () => {
   const navigate = useNavigate();
 
   const token = localStorage.getItem('token');
-  
-  const [stats, setStats] = useState({
-    applications: 0,
-    resumes: 0,
-    matches: 0,
+
+  const [stats, setStats] = useState(() => {
+    const saved = localStorage.getItem('dashboard_stats');
+    return saved ? JSON.parse(saved) : {
+      applications: 0,
+      resumes: 0,
+      matches: 0,
+    };
   });
-  const [jobRecommendations, setJobRecommendations] = useState([]);
-  const [statsLoading, setStatsLoading] = useState(true);
-  const [jobsLoading, setJobsLoading] = useState(true);
+  const [jobRecommendations, setJobRecommendations] = useState(() => {
+    const saved = localStorage.getItem('dashboard_recommendations');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [statsLoading, setStatsLoading] = useState(() => !localStorage.getItem('dashboard_stats'));
+  const [jobsLoading, setJobsLoading] = useState(() => !localStorage.getItem('dashboard_recommendations'));
   const [error, setError] = useState('');
-  const [hasResume, setHasResume] = useState(false);
+  const [hasResume, setHasResume] = useState(() => localStorage.getItem('dashboard_has_resume') === 'true');
   const [retryCount, setRetryCount] = useState(0);
 
   // Fetch user stats and job recommendations
@@ -40,29 +46,36 @@ const DashboardSection = () => {
     const fetchDashboardData = async () => {
       // Wait for userData to be fully loaded
       if (userLoading || !userData?.email) {
-        console.log('Waiting for user data...');
+        return;
+      }
+
+      // If we have cached data and it's not a retry, don't re-fetch/re-analyze
+      if (retryCount === 0 && jobRecommendations.length > 0) {
+        console.log('Using cached job recommendations');
+        setStatsLoading(false);
+        setJobsLoading(false);
         return;
       }
 
       try {
         setError('');
-        
+
         console.log('Fetching dashboard data for:', userData.email);
-        
+
         // Step 1: Get user profile to fetch user_id
         const profileResponse = await fetch(`${API_BASE}/api/profile/${userData.email}`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
         });
-        
+
         if (!profileResponse.ok) {
           throw new Error(`Profile fetch failed: ${profileResponse.status}`);
         }
-        
+
         const userProfile = await profileResponse.json();
         console.log('User profile loaded:', userProfile.user_id);
-        
+
         if (!userProfile || !userProfile.user_id) {
           throw new Error('User profile not found or missing user_id');
         }
@@ -74,17 +87,18 @@ const DashboardSection = () => {
           try {
             console.log('Fetching stats for user:', userId);
             const statsResponse = await fetch(`${API_BASE}/api/stats/${userId}`);
-            
+
             if (!statsResponse.ok) {
               console.error('Stats response not OK:', statsResponse.status);
               throw new Error(`Failed to fetch stats: ${statsResponse.status}`);
             }
-            
+
             const statsData = await statsResponse.json();
             console.log('Stats data received:', statsData);
-            
+
             if (statsData.success) {
               setStats(statsData.stats);
+              localStorage.setItem('dashboard_stats', JSON.stringify(statsData.stats));
             } else {
               throw new Error(statsData.error || 'Failed to load stats');
             }
@@ -96,68 +110,72 @@ const DashboardSection = () => {
           }
         };
 
-      const fetchRecommendations = async () => {
-      try {
-        console.log('Checking for user resume...');
-        
-        // FIRST: Check if user has a resume in the resume table
-        const resumeCheckResponse = await fetch(`${API_BASE}/api/resume/user/${userId}`);
-        
-        if (!resumeCheckResponse.ok) {
-          throw new Error(`Failed to check resume: ${resumeCheckResponse.status}`);
-        }
-        
-        const userResumes = await resumeCheckResponse.json();
-        
-        // Check if user has any resumes
-        const hasResumeInTable = Array.isArray(userResumes) && userResumes.length > 0;
-        
-        if (!hasResumeInTable) {
-          console.log('❌ No resume found in database - Skipping job recommendations');
-          setHasResume(false);
-          setJobRecommendations([]);
-          setJobsLoading(false);
-          return; // EXIT EARLY - Don't call recommendation API
-        }
-        
-        console.log(`✅ Found ${userResumes.length} resume(s) - Fetching AI job recommendations...`);
-        setHasResume(true);
-        
-        // NOW call the recommendation API (only if resume exists)
-        const recommendResponse = await fetch(`${API_BASE}/api/jobs/recommend`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: userId }),
-        });
+        const fetchRecommendations = async () => {
+          try {
+            console.log('Checking for user resume...');
 
-        if (!recommendResponse.ok) {
-          console.error('Recommend response not OK:', recommendResponse.status);
-          throw new Error(`Failed to fetch recommendations: ${recommendResponse.status}`);
-        }
+            // FIRST: Check if user has a resume in the resume table
+            const resumeCheckResponse = await fetch(`${API_BASE}/api/resume/user/${userId}`);
 
-        const recommendData = await recommendResponse.json();
-        console.log('Recommendations received:', recommendData);
-        
-        if (recommendData.success) {
-          setJobRecommendations(recommendData.recommendations);
-          
-          // Update matches count
-          setStats(prev => ({
-            ...prev,
-            matches: recommendData.recommendations.length,
-          }));
+            if (!resumeCheckResponse.ok) {
+              throw new Error(`Failed to check resume: ${resumeCheckResponse.status}`);
+            }
 
-          console.log(`✅ Loaded ${recommendData.recommendations.length} AI-matched jobs`);
-        } else {
-          throw new Error(recommendData.error || 'Failed to load recommendations');
-        }
-      } catch (err) {
-        console.error('❌ Error fetching recommendations:', err);
-        setError(prev => prev || `Recommendations error: ${err.message}`);
-      } finally {
-        setJobsLoading(false);
-      }
-    };
+            const userResumes = await resumeCheckResponse.json();
+
+            // Check if user has any resumes
+            const hasResumeInTable = Array.isArray(userResumes) && userResumes.length > 0;
+
+            if (!hasResumeInTable) {
+              console.log('❌ No resume found in database - Skipping job recommendations');
+              setHasResume(false);
+              setJobRecommendations([]);
+              setJobsLoading(false);
+              return; // EXIT EARLY - Don't call recommendation API
+            }
+
+            console.log(`✅ Found ${userResumes.length} resume(s) - Fetching AI job recommendations...`);
+            setHasResume(true);
+
+            // NOW call the recommendation API (only if resume exists)
+            const recommendResponse = await fetch(`${API_BASE}/api/jobs/recommend`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userId: userId }),
+            });
+
+            if (!recommendResponse.ok) {
+              console.error('Recommend response not OK:', recommendResponse.status);
+              throw new Error(`Failed to fetch recommendations: ${recommendResponse.status}`);
+            }
+
+            const recommendData = await recommendResponse.json();
+            console.log('Recommendations received:', recommendData);
+
+            if (recommendData.success) {
+              setJobRecommendations(recommendData.recommendations);
+              localStorage.setItem('dashboard_recommendations', JSON.stringify(recommendData.recommendations));
+              localStorage.setItem('dashboard_has_resume', 'true');
+
+              // Update matches count
+              const updatedStats = {
+                ...stats,
+                matches: recommendData.recommendations.length,
+              };
+              setStats(updatedStats);
+              localStorage.setItem('dashboard_stats', JSON.stringify(updatedStats));
+
+              console.log(`✅ Loaded ${recommendData.recommendations.length} AI-matched jobs`);
+            } else {
+              throw new Error(recommendData.error || 'Failed to load recommendations');
+            }
+          } catch (err) {
+            console.error('❌ Error fetching recommendations:', err);
+            setError(prev => prev || `Recommendations error: ${err.message}`);
+          } finally {
+            setJobsLoading(false);
+          }
+        };
 
         // Fetch both in parallel
         await Promise.all([fetchStats(), fetchRecommendations()]);
@@ -201,10 +219,10 @@ const DashboardSection = () => {
     );
   }
 
-  
+
 
   return (
-      <div className="flex-1 p-4 md:p-6 lg:p-8 bg-white">
+    <div className="flex-1 p-4 md:p-6 lg:p-8 bg-white">
       {/* Header - Always visible */}
       <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold text-[#272343] mb-4 pl-5 md:pl-4">DASHBOARD</h1>
 
@@ -218,13 +236,13 @@ const DashboardSection = () => {
 
       {/* Error Alert with Retry */}
       {error && (
-        <Alert 
-          severity="error" 
+        <Alert
+          severity="error"
           sx={{ mb: 3 }}
           action={
-            <Button 
-              color="inherit" 
-              size="small" 
+            <Button
+              color="inherit"
+              size="small"
               onClick={handleRetry}
               startIcon={<RefreshIcon />}
             >
@@ -327,9 +345,21 @@ const DashboardSection = () => {
 
       {/* Job Recommendations Section */}
       <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-3 mb-4">
-        <h2 className="text-xl md:text-2xl font-bold text-[#272343]">
-          Job Recommendations {hasResume && ''}
-        </h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-xl md:text-2xl font-bold text-[#272343]">
+            Job Recommendations
+          </h2>
+          {hasResume && !jobsLoading && (
+            <button
+              onClick={handleRetry}
+              disabled={jobsLoading}
+              className="p-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-full transition-all active:scale-90 cursor-pointer"
+              title="Refresh AI Matches"
+            >
+              <RefreshIcon sx={{ fontSize: 18 }} />
+            </button>
+          )}
+        </div>
         <Button
           variant="outlined"
           onClick={handleViewAllJobs}
@@ -421,9 +451,9 @@ const DashboardSection = () => {
 
                 <div className="flex flex-wrap gap-1 mb-3">
                   {job.tags.slice(0, 3).map((tag, idx) => (
-                    <Chip 
-                      key={idx} 
-                      label={tag} 
+                    <Chip
+                      key={idx}
+                      label={tag}
                       size="small"
                       sx={{
                         backgroundColor: '#BAE8E8',
@@ -434,8 +464,8 @@ const DashboardSection = () => {
                     />
                   ))}
                   {hasResume && (
-                    <Chip 
-                      label="AI Match" 
+                    <Chip
+                      label="AI Match"
                       size="small"
                       icon={<StarIcon style={{ fontSize: 12 }} />}
                       sx={{
@@ -450,14 +480,14 @@ const DashboardSection = () => {
                 </div>
 
                 <div className="flex items-center justify-between">
-                  <button 
+                  <button
                     onClick={() => handleApplyClick(job)}
                     className="px-4 py-1.5 bg-[#FBDA23] text-[#272343] text-sm rounded font-bold hover:bg-[#FFE55C] transition-colors cursor-pointer"
                   >
                     Apply
                   </button>
-                  <OpenInNewIcon 
-                    className="text-gray-400 cursor-pointer hover:text-[#FBDA23]" 
+                  <OpenInNewIcon
+                    className="text-gray-400 cursor-pointer hover:text-[#FBDA23]"
                     onClick={() => handleApplyClick(job)}
                   />
                 </div>
@@ -470,8 +500,8 @@ const DashboardSection = () => {
           <WorkIcon sx={{ fontSize: { xs: 48, md: 60 }, color: '#BAE8E8', mb: 2 }} />
           <h3 className="text-lg md:text-xl font-bold text-[#272343] mb-2">No recommendations yet</h3>
           <p className="text-sm md:text-base text-gray-600 mb-4 px-2">
-            {hasResume 
-              ? "We're analyzing your profile to find the best matches" 
+            {hasResume
+              ? "We're analyzing your profile to find the best matches"
               : "Create a resume to get personalized AI-powered job recommendations"}
           </p>
           <Button

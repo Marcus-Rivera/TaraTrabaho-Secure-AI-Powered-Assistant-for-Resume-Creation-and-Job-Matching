@@ -53,7 +53,9 @@ const SidebarContent = ({ onClose, isMobile }) => {
 
   const handleLogout = () => {
     alert("Admin logging out...");
+    // ✅ CRITICAL: Thorough cleanup on logout to prevent data leakage
     sessionStorage.clear();
+    localStorage.clear();
     navigate("/login");
   };
 
@@ -117,10 +119,9 @@ const SidebarContent = ({ onClose, isMobile }) => {
               to={item.path}
               onClick={isMobile ? onClose : undefined}
               className={({ isActive: active }) =>
-                `group flex items-center justify-between w-full px-4 py-3 mt-2 rounded-xl transition-all duration-200 ${
-                  active
-                    ? "bg-gradient-to-r from-[#FBDA23] to-[#FFE55C] text-[#272343] font-bold shadow-md scale-[1.02]"
-                    : "text-[#272343] hover:bg-[#FBDA23]/20 hover:translate-x-1"
+                `group flex items-center justify-between w-full px-4 py-3 mt-2 rounded-xl transition-all duration-200 ${active
+                  ? "bg-gradient-to-r from-[#FBDA23] to-[#FFE55C] text-[#272343] font-bold shadow-md scale-[1.02]"
+                  : "text-[#272343] hover:bg-[#FBDA23]/20 hover:translate-x-1"
                 }`
               }
             >
@@ -191,7 +192,7 @@ const HomeAdmin = () => {
 
       {/* Desktop Sidebar */}
       <div className="hidden xl:flex">
-        <SidebarContent onClose={() => {}} isMobile={false} />
+        <SidebarContent onClose={() => { }} isMobile={false} />
       </div>
 
       {/* Mobile Drawer */}

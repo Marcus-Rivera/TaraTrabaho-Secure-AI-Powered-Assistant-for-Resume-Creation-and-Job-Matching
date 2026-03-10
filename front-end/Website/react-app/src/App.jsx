@@ -42,7 +42,7 @@ function App() {
         {/* User Dashboard (TaraTrabaho) */}
         <Route path="/taratrabaho" element={<Home />}>
           {/* Default redirect */}
-          <Route index element={<Navigate to="profile" replace />} />
+          <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="profile" element={<ProfileSection />} />
           <Route path="dashboard" element={<DashboardSection />} />
           <Route path="careerbot" element={<CareerBotSection />} />
