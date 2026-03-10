@@ -525,7 +525,7 @@ app.post("/api/check-username", async (req, res) => {
 // ============================================================================
 // SIGNUP ENDPOINT
 // ============================================================================
-app.post("/api/signup", signupLimiter, async (req, res) => {
+app.post("/api/signup", async (req, res) => {
   const { firstname, lastname, birthday, gender, username, email, phone, password } = req.body;
 
   const normalizedEmail = email.toLowerCase().trim();
@@ -535,7 +535,7 @@ app.post("/api/signup", signupLimiter, async (req, res) => {
     return res.status(400).json({ status: "error", message: "Email, username, and password are required" });
   }
 
-  const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+  const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 
   if (password.length < 8) {
     return res.status(400).json({
