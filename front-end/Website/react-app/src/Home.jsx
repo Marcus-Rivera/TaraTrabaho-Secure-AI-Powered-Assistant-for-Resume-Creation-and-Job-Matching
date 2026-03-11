@@ -381,6 +381,7 @@
               }
             />
 
+            {/*
             <NavLink
               to="/taratrabaho/applications"
               itemKey="applications"
@@ -392,6 +393,7 @@
   </svg>
               }
             />
+            */}
           </nav>
 
             
