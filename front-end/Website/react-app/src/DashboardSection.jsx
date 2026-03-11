@@ -21,7 +21,7 @@ const DashboardSection = () => {
   const { userData, loading: userLoading } = useSessionCheck();
   const navigate = useNavigate();
 
-  const token = localStorage.getItem('token');
+  const token = sessionStorage.getItem('token');
 
   const [stats, setStats] = useState({
     applications: 0,
