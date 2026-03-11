@@ -224,9 +224,12 @@ const ResumeSection = () => {
               key={resume.resume_id}
               className="flex justify-between items-center bg-[#E6F6F6] border rounded px-4 py-3 relative transition-all duration-200 hover:shadow-md"
             >
-              <div className="flex items-center gap-3">
-                <DescriptionIcon className="text-black" />
-                <span className="font-semibold text-sm md:text-lg text-[#272343]">
+              <div 
+                className="flex items-center gap-3 cursor-pointer group flex-1"
+                onClick={() => handlePreview(resume.resume_id, resume.filename)}
+              >
+                <DescriptionIcon className="text-black group-hover:text-blue-600 transition-colors" />
+                <span className="font-semibold text-sm md:text-lg text-[#272343] group-hover:text-blue-600 group-hover:underline transition-colors truncate">
                   {resume.filename}
                 </span>
               </div>
